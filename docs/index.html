@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kalkulator">
+  <title>Kalkulator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f12; --surface: #1a1a22; --surface-hover: #252530;
+      --display-bg: #12121a; --text: #f0f0f5; --text-muted: #8888a0;
+      --operator: #ff6b6b; --function: #4ecdc4; --equals: #6c5ce7;
+      --equals-hover: #7d6ff0; --shadow: 0 20px 60px rgba(0,0,0,0.5); --radius: 20px;
+    }
+    body {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse at 20% 20%, rgba(108,92,231,0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(78,205,196,0.1) 0%, transparent 50%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      padding: 1rem;
+    }
+    .calculator {
+      width: 100%; max-width: 420px;
+      background: var(--surface); border-radius: var(--radius);
+      box-shadow: var(--shadow); overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .calculator-header { padding: 1.25rem 1.5rem 0; }
+    .calculator-header h1 {
+      font-size: 0.85rem; font-weight: 500; color: var(--text-muted);
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .display {
+      padding: 1rem 1.5rem 1.5rem; background: var(--display-bg);
+      text-align: right; min-height: 110px;
+      display: flex; flex-direction: column; justify-content: flex-end;
+    }
+    .expression { font-size: 1rem; color: var(--text-muted); min-height: 1.5rem; word-break: break-all; margin-bottom: 0.25rem; }
+    .result { font-size: 2.75rem; font-weight: 300; color: var(--text); word-break: break-all; line-height: 1.1; }
+    .keypad {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1px; background: rgba(255,255,255,0.04); padding: 1px;
+    }
+    .btn {
+      border: none; background: var(--surface); color: var(--text);
+      font-size: 1.35rem; font-weight: 400; padding: 1.35rem 0;
+      cursor: pointer; transition: background 0.15s ease, transform 0.1s ease;
+      user-select: none; -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { transform: scale(0.95); }
+    .btn-operator { background: rgba(255,107,107,0.12); color: var(--operator); }
+    .btn-function { background: rgba(78,205,196,0.1); color: var(--function); font-size: 1.1rem; }
+    .btn-equals { background: var(--equals); color: #fff; font-weight: 500; }
+    .btn-zero { grid-column: span 2; }
+    @media (min-width: 768px) {
+      .calculator { max-width: 480px; }
+      .result { font-size: 3.25rem; }
+      .btn { padding: 1.5rem 0; font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="calculator">
+    <header class="calculator-header"><h1>Kalkulator</h1></header>
+    <div class="display">
+      <div class="expression" id="expression"></div>
+      <div class="result" id="result">0</div>
+    </div>
+    <div class="keypad">
+      <button class="btn btn-function" data-action="clear">AC</button>
+      <button class="btn btn-function" data-action="toggle-sign">±</button>
+      <button class="btn btn-function" data-action="percent">%</button>
+      <button class="btn btn-operator" data-action="operator" data-value="/">÷</button>
+      <button class="btn btn-number" data-value="7">7</button>
+      <button class="btn btn-number" data-value="8">8</button>
+      <button class="btn btn-number" data-value="9">9</button>
+      <button class="btn btn-operator" data-action="operator" data-value="*">×</button>
+      <button class="btn btn-number" data-value="4">4</button>
+      <button class="btn btn-number" data-value="5">5</button>
+      <button class="btn btn-number" data-value="6">6</button>
+      <button class="btn btn-operator" data-action="operator" data-value="-">−</button>
+      <button class="btn btn-number" data-value="1">1</button>
+      <button class="btn btn-number" data-value="2">2</button>
+      <button class="btn btn-number" data-value="3">3</button>
+      <button class="btn btn-operator" data-action="operator" data-value="+">+</button>
+      <button class="btn btn-number btn-zero" data-value="0">0</button>
+      <button class="btn btn-number" data-value=".">.</button>
+      <button class="btn btn-equals" data-action="equals">=</button>
+    </div>
+  </div>
+  <script>
+    const expressionEl = document.getElementById('expression');
+    const resultEl = document.getElementById('result');
+    let currentValue = '0', previousValue = '', operator = null, shouldResetDisplay = false;
+    const OPERATOR_SYMBOLS = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+
+    function updateDisplay() {
+      resultEl.textContent = formatDisplay(currentValue);
+      expressionEl.textContent = (previousValue && operator)
+        ? `${formatDisplay(previousValue)} ${OPERATOR_SYMBOLS[operator]}` : '';
+    }
+    function formatDisplay(value) {
+      if (value === '' || value === '-') return value || '0';
+      const num = parseFloat(value);
+      if (isNaN(num)) return '0';
+      if (value.includes('.') && value.endsWith('.')) {
+        return parseInt(value, 10).toLocaleString('id-ID') + '.';
+      }
+      const parts = value.split('.');
+      const formatted = parseInt(parts[0], 10).toLocaleString('id-ID');
+      return parts.length > 1 ? `${formatted},${parts[1]}` : formatted;
+    }
+    function inputNumber(digit) {
+      if (shouldResetDisplay) { currentValue = digit === '.' ? '0.' : digit; shouldResetDisplay = false; }
+      else if (digit === '.' && currentValue.includes('.')) return;
+      else if (currentValue === '0' && digit !== '.') currentValue = digit;
+      else currentValue += digit;
+      updateDisplay();
+    }
+    function inputOperator(op) {
+      if (operator && !shouldResetDisplay) calculate();
+      previousValue = currentValue; operator = op; shouldResetDisplay = true; updateDisplay();
+    }
+    function calculate() {
+      if (!operator || previousValue === '') return;
+      const prev = parseFloat(previousValue), current = parseFloat(currentValue);
+      if (isNaN(prev) || isNaN(current)) return;
+      let result;
+      switch (operator) {
+        case '+': result = prev + current; break;
+        case '-': result = prev - current; break;
+        case '*': result = prev * current; break;
+        case '/':
+          if (current === 0) {
+            currentValue = 'Error'; previousValue = ''; operator = null;
+            shouldResetDisplay = true; expressionEl.textContent = ''; resultEl.textContent = 'Error'; return;
+          }
+          result = prev / current; break;
+        default: return;
+      }
+      expressionEl.textContent = `${formatDisplay(previousValue)} ${OPERATOR_SYMBOLS[operator]} ${formatDisplay(currentValue)} =`;
+      currentValue = String(Math.round(result * 1e10) / 1e10);
+      previousValue = ''; operator = null; shouldResetDisplay = true;
+      resultEl.textContent = formatDisplay(currentValue);
+    }
+    function clearAll() {
+      currentValue = '0'; previousValue = ''; operator = null;
+      shouldResetDisplay = false; updateDisplay();
+    }
+    function toggleSign() {
+      if (currentValue === '0' || currentValue === 'Error') return;
+      currentValue = currentValue.startsWith('-') ? currentValue.slice(1) : '-' + currentValue;
+      updateDisplay();
+    }
+    function percentage() {
+      const num = parseFloat(currentValue);
+      if (isNaN(num)) return;
+      currentValue = String(Math.round(num / 100 * 1e10) / 1e10);
+      shouldResetDisplay = true; updateDisplay();
+    }
+    document.querySelector('.keypad').addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn');
+      if (!btn) return;
+      const action = btn.dataset.action, value = btn.dataset.value;
+      if (value !== undefined) { inputNumber(value); return; }
+      if (action === 'clear') clearAll();
+      else if (action === 'toggle-sign') toggleSign();
+      else if (action === 'percent') percentage();
+      else if (action === 'operator') inputOperator(value);
+      else if (action === 'equals') calculate();
+    });
+    updateDisplay();
+  </script>
+</body>
+</html>
