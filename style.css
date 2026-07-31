@@ -1,0 +1,160 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #0f0f12;
+  --surface: #1a1a22;
+  --surface-hover: #252530;
+  --display-bg: #12121a;
+  --text: #f0f0f5;
+  --text-muted: #8888a0;
+  --accent: #6c5ce7;
+  --accent-hover: #7d6ff0;
+  --operator: #ff6b6b;
+  --operator-hover: #ff8585;
+  --function: #4ecdc4;
+  --function-hover: #6dd9d2;
+  --equals: #6c5ce7;
+  --equals-hover: #7d6ff0;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  --radius: 20px;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 20%, rgba(108, 92, 231, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(78, 205, 196, 0.1) 0%, transparent 50%);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  padding: 1rem;
+}
+
+.calculator {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.calculator-header {
+  padding: 1.25rem 1.5rem 0;
+}
+
+.calculator-header h1 {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.display {
+  padding: 1rem 1.5rem 1.5rem;
+  background: var(--display-bg);
+  text-align: right;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.expression {
+  font-size: 1rem;
+  color: var(--text-muted);
+  min-height: 1.5rem;
+  word-break: break-all;
+  margin-bottom: 0.25rem;
+}
+
+.result {
+  font-size: 2.75rem;
+  font-weight: 300;
+  color: var(--text);
+  word-break: break-all;
+  line-height: 1.1;
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px;
+}
+
+.btn {
+  border: none;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.35rem;
+  font-weight: 400;
+  padding: 1.35rem 0;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:active {
+  transform: scale(0.95);
+}
+
+.btn-number:hover {
+  background: var(--surface-hover);
+}
+
+.btn-operator {
+  background: rgba(255, 107, 107, 0.12);
+  color: var(--operator);
+}
+
+.btn-operator:hover {
+  background: rgba(255, 107, 107, 0.22);
+}
+
+.btn-function {
+  background: rgba(78, 205, 196, 0.1);
+  color: var(--function);
+  font-size: 1.1rem;
+}
+
+.btn-function:hover {
+  background: rgba(78, 205, 196, 0.2);
+}
+
+.btn-equals {
+  background: var(--equals);
+  color: #fff;
+  font-weight: 500;
+}
+
+.btn-equals:hover {
+  background: var(--equals-hover);
+}
+
+.btn-zero {
+  grid-column: span 2;
+}
+
+@media (max-width: 400px) {
+  .result {
+    font-size: 2.25rem;
+  }
+
+  .btn {
+    padding: 1.15rem 0;
+    font-size: 1.2rem;
+  }
+}
