@@ -6,14 +6,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Kalkulator">
-  <title>Kalkulator</title>
+  <title>Kalkulator Scientific</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg: #0f0f12; --surface: #1a1a22; --surface-hover: #252530;
       --display-bg: #12121a; --text: #f0f0f5; --text-muted: #8888a0;
-      --operator: #ff6b6b; --function: #4ecdc4; --equals: #6c5ce7;
-      --equals-hover: #7d6ff0; --shadow: 0 20px 60px rgba(0,0,0,0.5); --radius: 20px;
+      --operator: #ff6b6b; --function: #4ecdc4; --science: #a29bfe;
+      --equals: #6c5ce7; --shadow: 0 20px 60px rgba(0,0,0,0.5); --radius: 20px;
     }
     body {
       min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -22,158 +22,456 @@
         radial-gradient(ellipse at 20% 20%, rgba(108,92,231,0.15) 0%, transparent 50%),
         radial-gradient(ellipse at 80% 80%, rgba(78,205,196,0.1) 0%, transparent 50%);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      padding: 1rem;
+      padding: 0.75rem;
     }
     .calculator {
-      width: 100%; max-width: 420px;
+      width: 100%; max-width: 520px;
       background: var(--surface); border-radius: var(--radius);
       box-shadow: var(--shadow); overflow: hidden;
       border: 1px solid rgba(255,255,255,0.06);
     }
-    .calculator-header { padding: 1.25rem 1.5rem 0; }
+    .calculator-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 1.25rem 0;
+    }
     .calculator-header h1 {
-      font-size: 0.85rem; font-weight: 500; color: var(--text-muted);
+      font-size: 0.8rem; font-weight: 500; color: var(--text-muted);
       letter-spacing: 0.05em; text-transform: uppercase;
     }
+    .mode-toggle {
+      border: 1px solid rgba(162,155,254,0.4); background: rgba(162,155,254,0.12);
+      color: var(--science); font-size: 0.75rem; font-weight: 600;
+      padding: 0.35rem 0.65rem; border-radius: 8px; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mode-toggle.active { background: var(--science); color: #fff; }
+    .second-indicator {
+      font-size: 0.7rem; color: var(--science); min-width: 2rem; text-align: right;
+    }
     .display {
-      padding: 1rem 1.5rem 1.5rem; background: var(--display-bg);
-      text-align: right; min-height: 110px;
+      padding: 0.75rem 1.25rem 1.25rem; background: var(--display-bg);
+      text-align: right; min-height: 100px;
       display: flex; flex-direction: column; justify-content: flex-end;
     }
-    .expression { font-size: 1rem; color: var(--text-muted); min-height: 1.5rem; word-break: break-all; margin-bottom: 0.25rem; }
-    .result { font-size: 2.75rem; font-weight: 300; color: var(--text); word-break: break-all; line-height: 1.1; }
+    .expression {
+      font-size: 0.95rem; color: var(--text-muted);
+      min-height: 1.25rem; word-break: break-all; margin-bottom: 0.25rem;
+    }
+    .result {
+      font-size: 2.25rem; font-weight: 300; color: var(--text);
+      word-break: break-all; line-height: 1.1;
+    }
     .keypad {
-      display: grid; grid-template-columns: repeat(4, 1fr);
+      display: grid; grid-template-columns: repeat(5, 1fr);
       gap: 1px; background: rgba(255,255,255,0.04); padding: 1px;
     }
     .btn {
       border: none; background: var(--surface); color: var(--text);
-      font-size: 1.35rem; font-weight: 400; padding: 1.35rem 0;
+      font-size: 1rem; font-weight: 400; padding: 0.9rem 0.2rem;
       cursor: pointer; transition: background 0.15s ease, transform 0.1s ease;
       user-select: none; -webkit-tap-highlight-color: transparent;
     }
     .btn:active { transform: scale(0.95); }
     .btn-operator { background: rgba(255,107,107,0.12); color: var(--operator); }
-    .btn-function { background: rgba(78,205,196,0.1); color: var(--function); font-size: 1.1rem; }
+    .btn-function { background: rgba(78,205,196,0.1); color: var(--function); font-size: 0.9rem; }
+    .btn-science { background: rgba(162,155,254,0.12); color: var(--science); font-size: 0.85rem; }
+    .btn-science.active { background: rgba(162,155,254,0.35); }
     .btn-equals { background: var(--equals); color: #fff; font-weight: 500; }
     .btn-zero { grid-column: span 2; }
     @media (min-width: 768px) {
-      .calculator { max-width: 480px; }
-      .result { font-size: 3.25rem; }
-      .btn { padding: 1.5rem 0; font-size: 1.5rem; }
+      .calculator { max-width: 560px; }
+      .result { font-size: 2.75rem; }
+      .btn { padding: 1rem 0.2rem; font-size: 1.05rem; }
+      .btn-science { font-size: 0.9rem; }
     }
   </style>
 </head>
 <body>
   <div class="calculator">
-    <header class="calculator-header"><h1>Kalkulator</h1></header>
+    <header class="calculator-header">
+      <h1>Scientific</h1>
+      <span class="second-indicator" id="secondIndicator"></span>
+      <button class="mode-toggle active" id="angleMode" type="button">DEG</button>
+    </header>
     <div class="display">
       <div class="expression" id="expression"></div>
       <div class="result" id="result">0</div>
     </div>
-    <div class="keypad">
-      <button class="btn btn-function" data-action="clear">AC</button>
-      <button class="btn btn-function" data-action="toggle-sign">±</button>
-      <button class="btn btn-function" data-action="percent">%</button>
-      <button class="btn btn-operator" data-action="operator" data-value="/">÷</button>
-      <button class="btn btn-number" data-value="7">7</button>
-      <button class="btn btn-number" data-value="8">8</button>
-      <button class="btn btn-number" data-value="9">9</button>
-      <button class="btn btn-operator" data-action="operator" data-value="*">×</button>
-      <button class="btn btn-number" data-value="4">4</button>
-      <button class="btn btn-number" data-value="5">5</button>
-      <button class="btn btn-number" data-value="6">6</button>
-      <button class="btn btn-operator" data-action="operator" data-value="-">−</button>
-      <button class="btn btn-number" data-value="1">1</button>
-      <button class="btn btn-number" data-value="2">2</button>
-      <button class="btn btn-number" data-value="3">3</button>
-      <button class="btn btn-operator" data-action="operator" data-value="+">+</button>
-      <button class="btn btn-number btn-zero" data-value="0">0</button>
-      <button class="btn btn-number" data-value=".">.</button>
-      <button class="btn btn-equals" data-action="equals">=</button>
-    </div>
+    <div class="keypad" id="keypad"></div>
   </div>
   <script>
     const expressionEl = document.getElementById('expression');
     const resultEl = document.getElementById('result');
-    let currentValue = '0', previousValue = '', operator = null, shouldResetDisplay = false;
-    const OPERATOR_SYMBOLS = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+    const secondIndicator = document.getElementById('secondIndicator');
+    const angleModeBtn = document.getElementById('angleMode');
+    const keypad = document.getElementById('keypad');
+
+    let expression = '0';
+    let lastResult = '0';
+    let useRadians = false;
+    let secondMode = false;
+
+    const BUTTONS = [
+      { label: '2nd', type: 'second', action: 'second' },
+      { label: '(', type: 'science', action: 'insert', value: '(' },
+      { label: ')', type: 'science', action: 'insert', value: ')' },
+      { label: '⌫', type: 'function', action: 'backspace' },
+      { label: 'AC', type: 'function', action: 'clear' },
+
+      { label: 'sin', type: 'science', action: 'func', value: 'sin', alt: 'asin' },
+      { label: 'cos', type: 'science', action: 'func', value: 'cos', alt: 'acos' },
+      { label: 'tan', type: 'science', action: 'func', value: 'tan', alt: 'atan' },
+      { label: 'log', type: 'science', action: 'func', value: 'log' },
+      { label: '÷', type: 'operator', action: 'insert', value: '/' },
+
+      { label: 'x²', type: 'science', action: 'square' },
+      { label: 'xʸ', type: 'science', action: 'insert', value: '^' },
+      { label: '√', type: 'science', action: 'func', value: 'sqrt' },
+      { label: 'ln', type: 'science', action: 'func', value: 'ln' },
+      { label: '×', type: 'operator', action: 'insert', value: '*' },
+
+      { label: 'π', type: 'science', action: 'insert', value: 'π' },
+      { label: 'e', type: 'science', action: 'insert', value: 'e' },
+      { label: 'n!', type: 'science', action: 'factorial' },
+      { label: '1/x', type: 'science', action: 'reciprocal' },
+      { label: '−', type: 'operator', action: 'insert', value: '-' },
+
+      { label: '7', type: 'number', action: 'insert', value: '7' },
+      { label: '8', type: 'number', action: 'insert', value: '8' },
+      { label: '9', type: 'number', action: 'insert', value: '9' },
+      { label: '%', type: 'function', action: 'percent' },
+      { label: '+', type: 'operator', action: 'insert', value: '+' },
+
+      { label: '4', type: 'number', action: 'insert', value: '4' },
+      { label: '5', type: 'number', action: 'insert', value: '5' },
+      { label: '6', type: 'number', action: 'insert', value: '6' },
+      { label: '±', type: 'function', action: 'toggleSign' },
+      { label: '×', type: 'operator', action: 'insert', value: '*' },
+
+      { label: '1', type: 'number', action: 'insert', value: '1' },
+      { label: '2', type: 'number', action: 'insert', value: '2' },
+      { label: '3', type: 'number', action: 'insert', value: '3' },
+      { label: '.', type: 'number', action: 'insert', value: '.' },
+      { label: '÷', type: 'operator', action: 'insert', value: '/' },
+
+      { label: '0', type: 'number zero', action: 'insert', value: '0', span: 2 },
+      { label: '=', type: 'equals', action: 'equals', span: 3 },
+    ];
+
+    function renderKeypad() {
+      keypad.innerHTML = '';
+      BUTTONS.forEach((btn) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = `btn btn-${btn.type === 'number' || btn.type === 'zero' ? 'number' : btn.type}`;
+        if (btn.type === 'second' && secondMode) el.classList.add('active');
+        if (btn.action === 'func' && secondMode && btn.alt) {
+          el.textContent = btn.alt;
+        } else {
+          el.textContent = btn.label;
+        }
+        if (btn.span) el.style.gridColumn = `span ${btn.span}`;
+        if (btn.rowSpan) el.style.gridRow = `span ${btn.rowSpan}`;
+        el.addEventListener('click', () => handleButton(btn));
+        keypad.appendChild(el);
+      });
+    }
+
+    function toDisplay(expr) {
+      return expr
+        .replace(/\*/g, '×')
+        .replace(/\//g, '÷')
+        .replace(/asin/g, 'sin⁻¹')
+        .replace(/acos/g, 'cos⁻¹')
+        .replace(/atan/g, 'tan⁻¹')
+        .replace(/sqrt/g, '√')
+        .replace(/\^/g, '^');
+    }
 
     function updateDisplay() {
-      resultEl.textContent = formatDisplay(currentValue);
-      expressionEl.textContent = (previousValue && operator)
-        ? `${formatDisplay(previousValue)} ${OPERATOR_SYMBOLS[operator]}` : '';
-    }
-    function formatDisplay(value) {
-      if (value === '' || value === '-') return value || '0';
-      const num = parseFloat(value);
-      if (isNaN(num)) return '0';
-      if (value.includes('.') && value.endsWith('.')) {
-        return parseInt(value, 10).toLocaleString('id-ID') + '.';
+      expressionEl.textContent = expression === '0' ? '' : toDisplay(expression);
+      secondIndicator.textContent = secondMode ? '2nd' : '';
+      try {
+        const val = evaluate(expression);
+        if (!Number.isNaN(val) && Number.isFinite(val)) {
+          resultEl.textContent = formatNumber(val);
+          lastResult = String(val);
+        } else {
+          resultEl.textContent = formatNumber(parseFloat(lastResult) || 0);
+        }
+      } catch {
+        resultEl.textContent = expression.length > 1 ? '…' : formatNumber(parseFloat(lastResult) || 0);
       }
-      const parts = value.split('.');
-      const formatted = parseInt(parts[0], 10).toLocaleString('id-ID');
-      return parts.length > 1 ? `${formatted},${parts[1]}` : formatted;
     }
-    function inputNumber(digit) {
-      if (shouldResetDisplay) { currentValue = digit === '.' ? '0.' : digit; shouldResetDisplay = false; }
-      else if (digit === '.' && currentValue.includes('.')) return;
-      else if (currentValue === '0' && digit !== '.') currentValue = digit;
-      else currentValue += digit;
+
+    function formatNumber(num) {
+      if (!Number.isFinite(num)) return 'Error';
+      const rounded = Math.round(num * 1e10) / 1e10;
+      const str = String(rounded);
+      const parts = str.split('.');
+      const intFormatted = parseInt(parts[0], 10).toLocaleString('id-ID');
+      return parts.length > 1 ? `${intFormatted},${parts[1]}` : intFormatted;
+    }
+
+    function shouldReplace(expr) {
+      return expr === '0' || expr === 'Error';
+    }
+
+    function appendValue(value) {
+      if (shouldReplace(expression) && !'(.'.includes(value)) {
+        expression = value === '.' ? '0.' : value;
+      } else {
+        expression += value;
+      }
       updateDisplay();
     }
-    function inputOperator(op) {
-      if (operator && !shouldResetDisplay) calculate();
-      previousValue = currentValue; operator = op; shouldResetDisplay = true; updateDisplay();
+
+    function appendFunction(name) {
+      const prefix = shouldReplace(expression) ? '' : (endsWithValue(expression) ? '*' : '');
+      if (shouldReplace(expression)) expression = '';
+      expression += prefix + name + '(';
+      updateDisplay();
     }
-    function calculate() {
-      if (!operator || previousValue === '') return;
-      const prev = parseFloat(previousValue), current = parseFloat(currentValue);
-      if (isNaN(prev) || isNaN(current)) return;
-      let result;
-      switch (operator) {
-        case '+': result = prev + current; break;
-        case '-': result = prev - current; break;
-        case '*': result = prev * current; break;
-        case '/':
-          if (current === 0) {
-            currentValue = 'Error'; previousValue = ''; operator = null;
-            shouldResetDisplay = true; expressionEl.textContent = ''; resultEl.textContent = 'Error'; return;
+
+    function endsWithValue(expr) {
+      return /[\d)πe!]$/.test(expr);
+    }
+
+    function handleButton(btn) {
+      switch (btn.action) {
+        case 'second':
+          secondMode = !secondMode;
+          renderKeypad();
+          updateDisplay();
+          break;
+        case 'clear':
+          expression = '0';
+          updateDisplay();
+          break;
+        case 'backspace':
+          expression = expression.length <= 1 ? '0' : expression.slice(0, -1);
+          updateDisplay();
+          break;
+        case 'insert':
+          appendValue(btn.value);
+          break;
+        case 'func': {
+          const fnName = secondMode && btn.alt ? btn.alt : btn.value;
+          if (secondMode) { secondMode = false; renderKeypad(); }
+          appendFunction(fnName);
+          break;
+        }
+        case 'square':
+          if (shouldReplace(expression)) return;
+          expression = '(' + expression + ')^2';
+          updateDisplay();
+          break;
+        case 'factorial':
+          if (shouldReplace(expression)) return;
+          expression += '!';
+          updateDisplay();
+          break;
+        case 'reciprocal':
+          expression = shouldReplace(expression) ? '0' : expression;
+          expression = '1/(' + expression + ')';
+          updateDisplay();
+          break;
+        case 'percent':
+          try {
+            const val = evaluate(expression) / 100;
+            expression = String(Math.round(val * 1e10) / 1e10);
+            updateDisplay();
+          } catch { /* ignore */ }
+          break;
+        case 'toggleSign':
+          try {
+            const val = -evaluate(expression);
+            expression = String(Math.round(val * 1e10) / 1e10);
+            updateDisplay();
+          } catch { /* ignore */ }
+          break;
+        case 'equals':
+          try {
+            const val = evaluate(expression);
+            if (!Number.isFinite(val)) throw new Error();
+            expressionEl.textContent = toDisplay(expression) + ' =';
+            expression = String(Math.round(val * 1e10) / 1e10);
+            lastResult = expression;
+            resultEl.textContent = formatNumber(val);
+          } catch {
+            resultEl.textContent = 'Error';
+            expression = 'Error';
           }
-          result = prev / current; break;
-        default: return;
+          break;
       }
-      expressionEl.textContent = `${formatDisplay(previousValue)} ${OPERATOR_SYMBOLS[operator]} ${formatDisplay(currentValue)} =`;
-      currentValue = String(Math.round(result * 1e10) / 1e10);
-      previousValue = ''; operator = null; shouldResetDisplay = true;
-      resultEl.textContent = formatDisplay(currentValue);
     }
-    function clearAll() {
-      currentValue = '0'; previousValue = ''; operator = null;
-      shouldResetDisplay = false; updateDisplay();
+
+    function factorial(n) {
+      if (n < 0 || !Number.isInteger(n)) return NaN;
+      if (n > 170) return Infinity;
+      let r = 1;
+      for (let i = 2; i <= n; i++) r *= i;
+      return r;
     }
-    function toggleSign() {
-      if (currentValue === '0' || currentValue === 'Error') return;
-      currentValue = currentValue.startsWith('-') ? currentValue.slice(1) : '-' + currentValue;
+
+    function toAngle(x) { return useRadians ? x : x * Math.PI / 180; }
+    function fromAngle(x) { return useRadians ? x : x * 180 / Math.PI; }
+
+    function tokenize(input) {
+      const tokens = [];
+      let i = 0;
+      while (i < input.length) {
+        const ch = input[i];
+        if (/\s/.test(ch)) { i++; continue; }
+        if (/[\d.]/.test(ch)) {
+          let num = ch;
+          i++;
+          while (i < input.length && /[\d.]/.test(input[i])) num += input[i++];
+          tokens.push({ type: 'num', value: parseFloat(num) });
+          continue;
+        }
+        if ('+-*/^()!,'.includes(ch)) {
+          tokens.push({ type: ch === ',' ? 'num' : 'op', value: ch });
+          i++;
+          continue;
+        }
+        if (input.slice(i, i + 2) === 'pi' || input[i] === 'π') {
+          tokens.push({ type: 'num', value: Math.PI });
+          i += input[i] === 'π' ? 1 : 2;
+          continue;
+        }
+        if (input[i] === 'e' && !/[a-z]/.test(input[i + 1] || '')) {
+          tokens.push({ type: 'num', value: Math.E });
+          i++;
+          continue;
+        }
+        const funcs = ['asin', 'acos', 'atan', 'sin', 'cos', 'tan', 'log', 'ln', 'sqrt'];
+        const found = funcs.find(f => input.slice(i, i + f.length) === f);
+        if (found) {
+          tokens.push({ type: 'func', value: found });
+          i += found.length;
+          continue;
+        }
+        throw new Error('Invalid');
+      }
+      return tokens;
+    }
+
+    function parse(tokens) {
+      let pos = 0;
+
+      function peek() { return tokens[pos]; }
+      function consume() { return tokens[pos++]; }
+
+      function parseExpression() {
+        let left = parseTerm();
+        while (peek() && (peek().value === '+' || peek().value === '-')) {
+          const op = consume().value;
+          const right = parseTerm();
+          left = op === '+' ? left + right : left - right;
+        }
+        return left;
+      }
+
+      function parseTerm() {
+        let left = parsePower();
+        while (peek() && (peek().value === '*' || peek().value === '/')) {
+          const op = consume().value;
+          const right = parsePower();
+          left = op === '*' ? left * right : left / right;
+        }
+        return left;
+      }
+
+      function parsePower() {
+        let left = parseUnary();
+        while (peek() && peek().value === '^') {
+          consume();
+          const right = parseUnary();
+          left = Math.pow(left, right);
+        }
+        return left;
+      }
+
+      function parseUnary() {
+        if (peek()?.value === '-') {
+          consume();
+          return -parseUnary();
+        }
+        return parseFactorial();
+      }
+
+      function parseFactorial() {
+        let left = parsePrimary();
+        while (peek()?.value === '!') {
+          consume();
+          left = factorial(left);
+        }
+        return left;
+      }
+
+      function parsePrimary() {
+        const token = peek();
+        if (!token) throw new Error('Unexpected end');
+
+        if (token.type === 'num' && typeof token.value === 'number') {
+          consume();
+          return token.value;
+        }
+
+        if (token.type === 'func') {
+          const fn = consume().value;
+          if (peek()?.value !== '(') throw new Error('Expected (');
+          consume();
+          const arg = parseExpression();
+          if (peek()?.value !== ')') throw new Error('Expected )');
+          consume();
+          switch (fn) {
+            case 'sin': return Math.sin(toAngle(arg));
+            case 'cos': return Math.cos(toAngle(arg));
+            case 'tan': return Math.tan(toAngle(arg));
+            case 'asin': return fromAngle(Math.asin(arg));
+            case 'acos': return fromAngle(Math.acos(arg));
+            case 'atan': return fromAngle(Math.atan(arg));
+            case 'log': return Math.log10(arg);
+            case 'ln': return Math.log(arg);
+            case 'sqrt': return Math.sqrt(arg);
+            default: throw new Error('Unknown func');
+          }
+        }
+
+        if (token.value === '(') {
+          consume();
+          const val = parseExpression();
+          if (peek()?.value !== ')') throw new Error('Expected )');
+          consume();
+          return val;
+        }
+
+        throw new Error('Invalid token');
+      }
+
+      const result = parseExpression();
+      if (pos < tokens.length) throw new Error('Trailing tokens');
+      return result;
+    }
+
+    function evaluate(expr) {
+      if (!expr || expr === 'Error') throw new Error();
+      const normalized = expr.replace(/π/g, 'pi');
+      const tokens = tokenize(normalized);
+      if (!tokens.length) return 0;
+      return parse(tokens);
+    }
+
+    angleModeBtn.addEventListener('click', () => {
+      useRadians = !useRadians;
+      angleModeBtn.textContent = useRadians ? 'RAD' : 'DEG';
+      angleModeBtn.classList.toggle('active', !useRadians);
       updateDisplay();
-    }
-    function percentage() {
-      const num = parseFloat(currentValue);
-      if (isNaN(num)) return;
-      currentValue = String(Math.round(num / 100 * 1e10) / 1e10);
-      shouldResetDisplay = true; updateDisplay();
-    }
-    document.querySelector('.keypad').addEventListener('click', (e) => {
-      const btn = e.target.closest('.btn');
-      if (!btn) return;
-      const action = btn.dataset.action, value = btn.dataset.value;
-      if (value !== undefined) { inputNumber(value); return; }
-      if (action === 'clear') clearAll();
-      else if (action === 'toggle-sign') toggleSign();
-      else if (action === 'percent') percentage();
-      else if (action === 'operator') inputOperator(value);
-      else if (action === 'equals') calculate();
     });
+
+    renderKeypad();
     updateDisplay();
   </script>
 </body>
