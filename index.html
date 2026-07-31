@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Kalkulator">
-  <title>Kalkulator Scientific</title>
+  <meta name="apple-mobile-web-app-title" content="Aina's Calculator">
+  <title>Aina's Calculator</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -32,12 +32,35 @@
     }
     .calculator-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 1rem 1.25rem 0;
+      padding: 1rem 1.25rem 0.5rem; gap: 0.75rem;
     }
-    .calculator-header h1 {
-      font-size: 0.8rem; font-weight: 500; color: var(--text-muted);
-      letter-spacing: 0.05em; text-transform: uppercase;
+    .logo {
+      display: flex; align-items: center; gap: 0.65rem; min-width: 0; flex: 1;
     }
+    .logo-icon {
+      width: 40px; height: 40px; flex-shrink: 0;
+      border-radius: 11px;
+      background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 50%, #4ecdc4 100%);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 14px rgba(108, 92, 231, 0.35);
+    }
+    .logo-icon svg { width: 22px; height: 22px; }
+    .logo-text { min-width: 0; }
+    .logo-title {
+      font-size: 1rem; font-weight: 700; line-height: 1.15;
+      background: linear-gradient(90deg, #f0f0f5 0%, #a29bfe 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .logo-subtitle {
+      font-size: 0.68rem; font-weight: 500; color: var(--text-muted);
+      letter-spacing: 0.06em; text-transform: uppercase; margin-top: 0.1rem;
+    }
+    .header-controls {
+      display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;
+    }
+    .calculator-header h1 { display: none; }
     .mode-toggle {
       border: 1px solid rgba(162,155,254,0.4); background: rgba(162,155,254,0.12);
       color: var(--science); font-size: 0.75rem; font-weight: 600;
@@ -89,9 +112,26 @@
 <body>
   <div class="calculator">
     <header class="calculator-header">
-      <h1>Scientific</h1>
-      <span class="second-indicator" id="secondIndicator"></span>
-      <button class="mode-toggle active" id="angleMode" type="button">DEG</button>
+      <div class="logo">
+        <div class="logo-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="5" y="3" width="14" height="18" rx="2.5" stroke="white" stroke-width="1.5"/>
+            <text x="12" y="11.5" text-anchor="middle" fill="white" font-size="7" font-weight="700" font-family="system-ui,sans-serif">A</text>
+            <circle cx="8" cy="16" r="1" fill="white"/>
+            <circle cx="12" cy="16" r="1" fill="white"/>
+            <circle cx="16" cy="16" r="1" fill="white"/>
+            <rect x="8" y="18.5" width="8" height="1.2" rx="0.6" fill="white"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <div class="logo-title">Aina's Calculator</div>
+          <div class="logo-subtitle">Scientific</div>
+        </div>
+      </div>
+      <div class="header-controls">
+        <span class="second-indicator" id="secondIndicator"></span>
+        <button class="mode-toggle active" id="angleMode" type="button">DEG</button>
+      </div>
     </header>
     <div class="display">
       <div class="expression" id="expression"></div>
