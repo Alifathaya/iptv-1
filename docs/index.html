@@ -10,17 +10,17 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0f0f12; --surface: #1a1a22; --surface-hover: #252530;
-      --display-bg: #12121a; --text: #f0f0f5; --text-muted: #8888a0;
-      --operator: #ff6b6b; --function: #4ecdc4; --science: #a29bfe;
-      --equals: #6c5ce7; --shadow: 0 20px 60px rgba(0,0,0,0.5); --radius: 20px;
+      --bg: #1a0d14; --surface: #2a1522; --surface-hover: #3a1f30;
+      --display-bg: #221018; --text: #fff5f9; --text-muted: #d49bb5;
+      --operator: #ff8fab; --function: #ffb3d1; --science: #ff6eb4;
+      --equals: #e84393; --shadow: 0 20px 60px rgba(232, 67, 147, 0.25); --radius: 20px;
     }
     body {
       min-height: 100vh; display: flex; align-items: center; justify-content: center;
       background: var(--bg);
       background-image:
-        radial-gradient(ellipse at 20% 20%, rgba(108,92,231,0.15) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 80%, rgba(78,205,196,0.1) 0%, transparent 50%);
+        radial-gradient(ellipse at 20% 20%, rgba(255, 110, 180, 0.2) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(232, 67, 147, 0.15) 0%, transparent 50%);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       padding: 0.75rem;
     }
@@ -28,7 +28,7 @@
       width: 100%; max-width: 520px;
       background: var(--surface); border-radius: var(--radius);
       box-shadow: var(--shadow); overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.06);
+      border: 1px solid rgba(255, 182, 213, 0.12);
     }
     .calculator-header {
       display: flex; align-items: center; justify-content: space-between;
@@ -40,15 +40,15 @@
     .logo-icon {
       width: 40px; height: 40px; flex-shrink: 0;
       border-radius: 11px;
-      background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 50%, #4ecdc4 100%);
+      background: linear-gradient(135deg, #e84393 0%, #ff6eb4 50%, #ffb3d9 100%);
       display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 14px rgba(108, 92, 231, 0.35);
+      box-shadow: 0 4px 14px rgba(232, 67, 147, 0.45);
     }
     .logo-icon svg { width: 22px; height: 22px; }
     .logo-text { min-width: 0; }
     .logo-title {
       font-size: 1rem; font-weight: 700; line-height: 1.15;
-      background: linear-gradient(90deg, #f0f0f5 0%, #a29bfe 100%);
+      background: linear-gradient(90deg, #fff5f9 0%, #ff8fab 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       background-clip: text;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -62,7 +62,7 @@
     }
     .calculator-header h1 { display: none; }
     .mode-toggle {
-      border: 1px solid rgba(162,155,254,0.4); background: rgba(162,155,254,0.12);
+      border: 1px solid rgba(255, 110, 180, 0.45); background: rgba(255, 110, 180, 0.15);
       color: var(--science); font-size: 0.75rem; font-weight: 600;
       padding: 0.35rem 0.65rem; border-radius: 8px; cursor: pointer;
       -webkit-tap-highlight-color: transparent;
@@ -86,7 +86,7 @@
     }
     .keypad {
       display: grid; grid-template-columns: repeat(5, 1fr);
-      gap: 1px; background: rgba(255,255,255,0.04); padding: 1px;
+      gap: 1px; background: rgba(255, 182, 213, 0.08); padding: 1px;
     }
     .btn {
       border: none; background: var(--surface); color: var(--text);
@@ -95,11 +95,11 @@
       user-select: none; -webkit-tap-highlight-color: transparent;
     }
     .btn:active { transform: scale(0.95); }
-    .btn-operator { background: rgba(255,107,107,0.12); color: var(--operator); }
-    .btn-function { background: rgba(78,205,196,0.1); color: var(--function); font-size: 0.9rem; }
-    .btn-science { background: rgba(162,155,254,0.12); color: var(--science); font-size: 0.85rem; }
-    .btn-science.active { background: rgba(162,155,254,0.35); }
-    .btn-equals { background: var(--equals); color: #fff; font-weight: 500; }
+    .btn-operator { background: rgba(255, 143, 171, 0.18); color: var(--operator); }
+    .btn-function { background: rgba(255, 179, 209, 0.12); color: var(--function); font-size: 0.9rem; }
+    .btn-science { background: rgba(255, 110, 180, 0.15); color: var(--science); font-size: 0.85rem; }
+    .btn-science.active { background: rgba(255, 110, 180, 0.35); }
+    .btn-equals { background: linear-gradient(135deg, #e84393, #ff6eb4); color: #fff; font-weight: 500; }
     .btn-zero { grid-column: span 2; }
     @media (min-width: 768px) {
       .calculator { max-width: 560px; }
