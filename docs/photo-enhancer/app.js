@@ -4,6 +4,16 @@
 
 import { fitMaxDimension, scaleImageData } from './filters.js';
 import { isNativeApp, saveAndShareImage, saveToDocuments } from './native.js';
+import {
+  blobToImageData,
+  canvasToBlob,
+  checkCloudHealth,
+  enhanceViaCloud,
+  getCloudApiKey,
+  getCloudApiUrl,
+  hasCloudConfigured,
+  setCloudSettings,
+} from './cloud-api.js';
 
 const AI_INPUT_MAX = 480;
 const AI_INPUT_ULTRA = 320;
@@ -34,6 +44,7 @@ let upscalerCache = {};
 let processTimeout = null;
 
 const PRESETS = {
+  cloud: { mode: 'cloud-8', sharpness: 75, clarity: 55, contrast: 30, brightness: 5, denoise: 30, deblur: 90, upscale: 0 },
   ultra: { mode: 'ultra', sharpness: 80, clarity: 60, contrast: 35, brightness: 5, denoise: 35, deblur: 95, upscale: 0 },
   extreme: { mode: 'extreme', sharpness: 70, clarity: 55, contrast: 30, brightness: 5, denoise: 30, deblur: 85, upscale: 0 },
   blur: { mode: 'pro', sharpness: 75, clarity: 55, contrast: 25, brightness: 5, denoise: 30, deblur: 70, upscale: 0 },
@@ -146,16 +157,34 @@ function isAiMode(mode = state.mode) {
   return mode === 'extreme' || mode === 'ultra';
 }
 
+function isCloudMode(mode = state.mode) {
+  return mode === 'cloud-4' || mode === 'cloud-8';
+}
+
+function isHeavyMode(mode = state.mode) {
+  return isAiMode(mode) || isCloudMode(mode);
+}
+
 function setMode(mode) {
   state.mode = mode;
   els.modeBtns.forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
   els.deblurGroup.style.display = mode === 'fast' ? 'none' : 'block';
-  els.aiBadge.classList.toggle('visible', isAiMode(mode));
-  els.aiBadge.textContent = mode === 'ultra'
-    ? 'Mode ULTRA — ESRGAN 8x aktif'
-    : 'Mode AI ESRGAN 4x aktif';
+  els.cloudSettings.classList.toggle('visible', isCloudMode(mode));
+
+  const showBadge = isAiMode(mode) || isCloudMode(mode);
+  els.aiBadge.classList.toggle('visible', showBadge);
+
+  if (isCloudMode(mode)) {
+    els.aiBadge.textContent = mode === 'cloud-8'
+      ? '☁️ Cloud GPU — Real-ESRGAN 8x'
+      : '☁️ Cloud GPU — Real-ESRGAN 4x';
+  } else if (mode === 'ultra') {
+    els.aiBadge.textContent = 'Mode ULTRA — ESRGAN 8x aktif';
+  } else if (mode === 'extreme') {
+    els.aiBadge.textContent = 'Mode AI ESRGAN 4x aktif';
+  }
 }
 
 function applyPreset(name) {
@@ -277,6 +306,31 @@ async function runAiPipeline(sourceData, scale) {
   return await runWorker('process', result, 'post-polish');
 }
 
+async function runCloudPipeline(sourceData, scale) {
+  if (!hasCloudConfigured()) {
+    els.cloudSettings.classList.add('visible');
+    els.cloudSettings.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    throw new Error('Atur URL server GPU di pengaturan Cloud GPU.');
+  }
+
+  updateProgress(8, 'Menyiapkan foto untuk GPU…');
+  const canvas = imageDataToCanvas(sourceData);
+  const blob = await canvasToBlob(canvas);
+
+  const resultBlob = await enhanceViaCloud(
+    blob,
+    {
+      scale,
+      deblur: state.settings.deblur,
+      sharpness: state.settings.sharpness,
+      contrast: state.settings.contrast,
+    },
+    updateProgress,
+  );
+
+  return await blobToImageData(resultBlob);
+}
+
 async function processAndRender() {
   if (!state.originalImage || state.processing) return;
 
@@ -295,6 +349,10 @@ async function processAndRender() {
       result = await runAiPipeline(sourceData, 4);
     } else if (state.mode === 'ultra') {
       result = await runAiPipeline(sourceData, 8);
+    } else if (state.mode === 'cloud-4') {
+      result = await runCloudPipeline(sourceData, 4);
+    } else if (state.mode === 'cloud-8') {
+      result = await runCloudPipeline(sourceData, 8);
     }
 
     els.afterCanvas.width = result.width;
@@ -304,7 +362,8 @@ async function processAndRender() {
     updateProgress(100, 'Selesai!');
   } catch (err) {
     console.error(err);
-    alert('Gagal memproses foto. Coba foto lebih kecil atau mode Cepat.');
+    const msg = err.message || 'Gagal memproses foto.';
+    alert(isCloudMode() ? msg : 'Gagal memproses foto. Coba foto lebih kecil atau mode Cepat.');
   } finally {
     setTimeout(() => setProcessing(false), 400);
   }
@@ -479,7 +538,7 @@ function initControls() {
       els.values[key].textContent = formatSliderValue(key, state.settings[key]);
       state.preset = 'custom';
       els.presetBtns.forEach((btn) => btn.classList.remove('active'));
-      if (!isAiMode()) scheduleProcess();
+      if (!isHeavyMode()) scheduleProcess();
     });
   });
 
@@ -504,6 +563,34 @@ function initControls() {
   els.btnReset.addEventListener('click', resetSettings);
   els.btnNew.addEventListener('click', resetApp);
   els.btnEnhance.addEventListener('click', () => processAndRender());
+
+  if (els.btnCloudSave) {
+    els.btnCloudSave.addEventListener('click', () => {
+      setCloudSettings(els.cloudApiUrl.value.trim(), els.cloudApiKey.value.trim());
+      alert('Pengaturan Cloud GPU disimpan.');
+    });
+  }
+
+  if (els.btnCloudTest) {
+    els.btnCloudTest.addEventListener('click', async () => {
+      setCloudSettings(els.cloudApiUrl.value.trim(), els.cloudApiKey.value.trim());
+      els.btnCloudTest.disabled = true;
+      els.cloudStatus.textContent = 'Menghubungkan…';
+      try {
+        const health = await checkCloudHealth();
+        const gpu = health.gpu?.available
+          ? `GPU: ${health.gpu.name}`
+          : 'CPU mode (tanpa GPU)';
+        els.cloudStatus.textContent = `✓ Terhubung — ${gpu}`;
+        els.cloudStatus.classList.add('ok');
+      } catch (err) {
+        els.cloudStatus.textContent = `✗ ${err.message}`;
+        els.cloudStatus.classList.remove('ok');
+      } finally {
+        els.btnCloudTest.disabled = false;
+      }
+    });
+  }
 }
 
 function bindElements() {
@@ -545,7 +632,18 @@ function bindElements() {
     progressText: document.getElementById('progressText'),
     progressStep: document.getElementById('progressStep'),
     aiBadge: document.getElementById('aiBadge'),
+    cloudSettings: document.getElementById('cloudSettings'),
+    cloudApiUrl: document.getElementById('cloudApiUrl'),
+    cloudApiKey: document.getElementById('cloudApiKey'),
+    cloudStatus: document.getElementById('cloudStatus'),
+    btnCloudSave: document.getElementById('btnCloudSave'),
+    btnCloudTest: document.getElementById('btnCloudTest'),
   };
+
+  if (els.cloudApiUrl) {
+    els.cloudApiUrl.value = getCloudApiUrl();
+    els.cloudApiKey.value = getCloudApiKey();
+  }
 }
 
 export function initApp() {

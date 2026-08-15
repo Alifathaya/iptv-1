@@ -87,7 +87,37 @@
         </button>
       </div>
 
+      <div class="mode-selector cloud-selector">
+        <button type="button" class="mode-btn mode-cloud" data-mode="cloud-4">
+          <span class="mode-icon">☁️</span>
+          <span class="mode-label">GPU 4x</span>
+        </button>
+        <button type="button" class="mode-btn mode-cloud-max" data-mode="cloud-8">
+          <span class="mode-icon">🚀</span>
+          <span class="mode-label">GPU 8x MAX</span>
+        </button>
+      </div>
+
+      <div class="cloud-settings glass" id="cloudSettings">
+        <h3 class="cloud-title">☁️ Pengaturan Server GPU</h3>
+        <p class="cloud-hint">Deploy backend GPU Anda, lalu masukkan URL di sini.</p>
+        <div class="cloud-field">
+          <label for="cloudApiUrl">URL API</label>
+          <input type="url" id="cloudApiUrl" placeholder="https://gpu-server.com:8080" autocomplete="url">
+        </div>
+        <div class="cloud-field">
+          <label for="cloudApiKey">API Key (opsional)</label>
+          <input type="password" id="cloudApiKey" placeholder="API key jika diaktifkan" autocomplete="off">
+        </div>
+        <div class="cloud-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnCloudTest">Tes Koneksi</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnCloudSave">Simpan</button>
+        </div>
+        <p class="cloud-status" id="cloudStatus"></p>
+      </div>
+
       <div class="presets">
+        <button type="button" class="preset-btn" data-preset="cloud">🚀 Cloud MAX</button>
         <button type="button" class="preset-btn" data-preset="ultra">💎 Ultra</button>
         <button type="button" class="preset-btn active" data-preset="extreme">🔥 Ekstrem</button>
         <button type="button" class="preset-btn" data-preset="blur">Foto Buram</button>
@@ -155,9 +185,9 @@
     </div>
 
     <div class="note glass">
-      <strong>ULTRA 8x:</strong> Deblur ekstrem → ESRGAN 8x AI → polish — untuk blur parah.
-      Install sebagai app: browser → Tambah ke Layar Utama, atau build APK (lihat BUILD-APK.md).
-      Model AI diunduh pertama kali (~5–15MB, butuh internet).
+      <strong>Cloud GPU:</strong> Mode terkuat — Real-ESRGAN di server NVIDIA GPU (4x/8x).
+      Panduan deploy: <code>backend/DEPLOY-GPU.md</code>.
+      Mode lokal: ULTRA 8x tetap tersedia tanpa server.
     </div>
   </div>
 

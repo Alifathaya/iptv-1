@@ -1,4 +1,5 @@
-node_modules/
+backend/weights/
+backend/.env
 android/.gradle/
 android/app/build/
 android/build/
