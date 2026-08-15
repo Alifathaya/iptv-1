@@ -1,0 +1,28 @@
+{
+  "name": "foto-jelas-pro",
+  "version": "2.0.0",
+  "description": "Foto Jelas Pro — AI photo enhancer for extreme blur",
+  "private": true,
+  "scripts": {
+    "build:photo": "esbuild docs/photo-enhancer/main.js --bundle --format=esm --outfile=docs/photo-enhancer/bundle.js --minify",
+    "cap:sync": "npm run build:photo && npx cap sync android",
+    "build:android": "npm run cap:sync && cd android && ./gradlew assembleDebug"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alifathaya/iptv-1.git"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/share": "^6.0.4",
+    "@capacitor/splash-screen": "^6.0.4",
+    "@capacitor/status-bar": "^6.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "appId": "com.fotojelas.pro",
+  "appName": "Foto Jelas Pro",
+  "webDir": "docs/photo-enhancer",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2500,
+      "launchAutoHide": true,
+      "backgroundColor": "#070b14",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#070b14"
+    }
+  }
+}

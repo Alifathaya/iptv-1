@@ -25,6 +25,8 @@ jobs:
 
       - name: Prepare site
         run: |
+          npm ci
+          npm run build:photo
           cp -r docs site
           touch site/.nojekyll
 
