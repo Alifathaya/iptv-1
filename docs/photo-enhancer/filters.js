@@ -43,15 +43,15 @@ export function applyNaturalSharpen(imageData, amount) {
   const blurred = boxBlur(imageData, 1);
   const src = imageData.data;
   const blur = blurred.data;
-  const strength = clamp(amount / 100 * 0.42, 0, 0.42);
+  const strength = clamp(amount / 100 * 0.48, 0, 0.48);
 
   for (let i = 0; i < src.length; i += 4) {
     const lum = luminance(src[i], src[i + 1], src[i + 2]);
     const lumBlur = luminance(blur[i], blur[i + 1], blur[i + 2]);
     const detail = lum - lumBlur;
-    const edge = clamp(Math.abs(detail) / 18, 0, 1);
+    const edge = clamp(Math.abs(detail) / 14, 0, 1);
 
-    if (edge < 0.12) continue;
+    if (edge < 0.07) continue;
 
     const boost = detail * strength * edge;
     if (lum > 1) {
@@ -63,6 +63,71 @@ export function applyNaturalSharpen(imageData, amount) {
   }
 
   return imageData;
+}
+
+/** Unsharp mask pada luminance — radius terpisah untuk detail halus */
+function applyLuminanceUnsharp(imageData, amount, radius) {
+  if (amount <= 0) return imageData;
+
+  const blurred = boxBlur(imageData, radius);
+  const src = imageData.data;
+  const blur = blurred.data;
+  const strength = clamp(amount / 100 * 0.62, 0, 0.62);
+
+  for (let i = 0; i < src.length; i += 4) {
+    const lum = luminance(src[i], src[i + 1], src[i + 2]);
+    const lumBlur = luminance(blur[i], blur[i + 1], blur[i + 2]);
+    const detail = lum - lumBlur;
+
+    if (Math.abs(detail) < 1.5) continue;
+
+    const boost = detail * strength;
+    if (lum > 1) {
+      const scale = (lum + boost) / lum;
+      src[i] = clamp(Math.round(src[i] * scale), 0, 255);
+      src[i + 1] = clamp(Math.round(src[i + 1] * scale), 0, 255);
+      src[i + 2] = clamp(Math.round(src[i + 2] * scale), 0, 255);
+    }
+  }
+
+  return imageData;
+}
+
+/**
+ * Pemulihan detail halus — tangan, jari, tekstur lembut yang hilang karena blur/pixelasi.
+ * Multi-scale unsharp + boost area dengan detail lemah.
+ */
+export function applyFineDetailRecovery(imageData, amount) {
+  if (amount <= 0) return imageData;
+
+  let data = imageData;
+  data = applyLuminanceUnsharp(data, amount * 1.15, 1);
+  data = applyLuminanceUnsharp(data, amount * 0.75, 2);
+
+  const blurred = boxBlur(data, 4);
+  const src = data.data;
+  const blur = blurred.data;
+  const strength = amount / 100 * 0.32;
+
+  for (let i = 0; i < src.length; i += 4) {
+    const lum = luminance(src[i], src[i + 1], src[i + 2]);
+    const lumBlur = luminance(blur[i], blur[i + 1], blur[i + 2]);
+    const detail = lum - lumBlur;
+
+    if (Math.abs(detail) < 2) continue;
+
+    const softWeight = clamp(Math.abs(detail) / 12, 0.15, 1);
+    const boost = detail * strength * softWeight;
+
+    if (lum > 1) {
+      const scale = (lum + boost) / lum;
+      src[i] = clamp(Math.round(src[i] * scale), 0, 255);
+      src[i + 1] = clamp(Math.round(src[i + 1] * scale), 0, 255);
+      src[i + 2] = clamp(Math.round(src[i + 2] * scale), 0, 255);
+    }
+  }
+
+  return data;
 }
 
 /** Local mid-tone clarity on luminance — gentle, face-friendly */
@@ -124,7 +189,7 @@ export function fitMaxDimension(imageData, maxDim) {
 
 /** Laplacian sharpen 3×3 — matriks konvolusi (sum kernel = 1, aman clipping) */
 export function buildSharpenKernel3x3(amount) {
-  const s = clamp(amount / 100 * 0.22, 0, 0.22);
+  const s = clamp(amount / 100 * 0.26, 0, 0.26);
   return { s, center: 1 + 4 * s };
 }
 
@@ -574,12 +639,14 @@ export function processClarify(imageData, settings) {
   }
 
   if (settings.sharpness > 0) {
-    data = applyNaturalSharpen(data, settings.sharpness * 0.35);
-    data = applyConvolutionSharpen3x3(data, settings.sharpness);
+    data = applyNaturalSharpen(data, settings.sharpness * 0.4);
+    data = applyFineDetailRecovery(data, settings.sharpness);
+    data = applyConvolutionSharpen3x3(data, settings.sharpness * 0.85);
+    data = applyLuminanceUnsharp(data, settings.sharpness * 0.45, 1);
   }
 
-  if (settings.denoise > 20) {
-    data = applyDenoise(data, Math.min(settings.denoise, 45));
+  if (settings.denoise > 15) {
+    data = applyDenoise(data, Math.min(settings.denoise, 35));
   }
 
   return data;
@@ -598,15 +665,20 @@ export async function processClarifyAsync(imageData, settings, onProgress) {
   }
 
   if (settings.sharpness > 0) {
-    if (onProgress) onProgress(14, 'Pra-ketajaman edge-aware…');
-    data = applyNaturalSharpen(data, settings.sharpness * 0.35);
+    if (onProgress) onProgress(14, 'Memulihkan detail halus (tangan, jari)…');
+    data = applyNaturalSharpen(data, settings.sharpness * 0.4);
     await yieldToMain();
-    data = await applyConvolutionSharpen3x3Async(data, settings.sharpness, onProgress);
+    data = applyFineDetailRecovery(data, settings.sharpness);
+    await yieldToMain();
+    data = await applyConvolutionSharpen3x3Async(data, settings.sharpness * 0.85, onProgress);
+    if (onProgress) onProgress(82, 'Finishing detail mikro…');
+    data = applyLuminanceUnsharp(data, settings.sharpness * 0.45, 1);
+    await yieldToMain();
   }
 
-  if (settings.denoise > 20) {
+  if (settings.denoise > 15) {
     if (onProgress) onProgress(88, 'Mengurangi noise…');
-    data = applyDenoise(data, Math.min(settings.denoise, 45));
+    data = applyDenoise(data, Math.min(settings.denoise, 35));
     await yieldToMain();
   }
 
@@ -620,10 +692,10 @@ export async function processFastAsync(imageData, settings, onProgress) {
 export async function processProAsync(imageData, settings, onProgress) {
   let data = await processClarifyAsync(imageData, settings, onProgress);
 
-  if (settings.deblur > 50) {
-    if (onProgress) onProgress(90, 'Deblur Richardson-Lucy…');
-    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.35, 22));
-    data = applyNaturalSharpen(data, settings.sharpness * 0.35);
+  if (settings.deblur > 40) {
+    if (onProgress) onProgress(90, 'Deblur detail (Richardson-Lucy)…');
+    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.4, 28));
+    data = applyFineDetailRecovery(data, settings.sharpness * 0.55);
     await yieldToMain();
   }
 
@@ -637,9 +709,9 @@ export function processFast(imageData, settings) {
 export function processPro(imageData, settings) {
   let data = processClarify(imageData, settings);
 
-  if (settings.deblur > 50) {
-    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.35, 22));
-    data = applyNaturalSharpen(data, settings.sharpness * 0.35);
+  if (settings.deblur > 40) {
+    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.4, 28));
+    data = applyFineDetailRecovery(data, settings.sharpness * 0.55);
   }
 
   return data;

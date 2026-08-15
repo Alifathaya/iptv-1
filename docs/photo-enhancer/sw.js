@@ -1,4 +1,4 @@
-const CACHE = 'foto-jelas-pro-v4';
+const CACHE = 'foto-jelas-pro-v5';
 const ASSETS = [
   './',
   './index.html',

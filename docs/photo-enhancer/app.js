@@ -33,7 +33,7 @@ const state = {
     deblur: 0,
     upscale: 0,
   },
-  preset: 'natural',
+  preset: 'detail',
   comparePosition: 50,
   processing: false,
   exportImageData: null,
@@ -47,8 +47,9 @@ let workerJobId = 0;
 
 const PRESETS = {
   natural: { mode: 'fast', sharpness: 38, clarity: 22, contrast: 18, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
-  jelas: { mode: 'fast', sharpness: 45, clarity: 28, contrast: 22, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
-  portrait: { mode: 'fast', sharpness: 32, clarity: 18, contrast: 12, brightness: 3, denoise: 25, deblur: 0, upscale: 0 },
+  jelas: { mode: 'fast', sharpness: 50, clarity: 30, contrast: 24, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
+  portrait: { mode: 'pro', sharpness: 52, clarity: 28, contrast: 16, brightness: 3, denoise: 8, deblur: 28, upscale: 0 },
+  detail: { mode: 'pro', sharpness: 62, clarity: 34, contrast: 20, brightness: 3, denoise: 5, deblur: 35, upscale: 0 },
   cloud: { mode: 'cloud-8', sharpness: 55, clarity: 35, contrast: 25, brightness: 3, denoise: 15, deblur: 25, upscale: 0 },
   ultra: { mode: 'ultra', sharpness: 60, clarity: 35, contrast: 25, brightness: 3, denoise: 18, deblur: 28, upscale: 0 },
   extreme: { mode: 'extreme', sharpness: 55, clarity: 35, contrast: 22, brightness: 3, denoise: 18, deblur: 25, upscale: 0 },
@@ -485,7 +486,7 @@ async function handleFile(file) {
     els.workspace.classList.add('active');
     els.compareContainer.style.aspectRatio = `${dims.width} / ${dims.height}`;
 
-    applyPreset('natural');
+    applyPreset('detail');
     updateComparePosition(50);
     await processAndRender();
   } catch {
