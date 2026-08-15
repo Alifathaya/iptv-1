@@ -1,48 +1,75 @@
+/**
+ * Web Worker — pemrosesan gambar di latar belakang (setara coroutine).
+ * Konvolusi ketajaman 3×3 async agar UI tidak lag.
+ */
 import {
-  processFast,
-  processPro,
+  processFastAsync,
+  processProAsync,
   processExtremePre,
   processPostPolish,
 } from './filters.js';
 
-function report(pct, message) {
-  self.postMessage({ type: 'progress', pct, message });
+function report(jobId, pct, message) {
+  self.postMessage({ jobId, type: 'progress', pct, message });
 }
 
-self.onmessage = (e) => {
-  const { task, imageData, settings, mode } = e.data;
+function toImageData(payload) {
+  return new ImageData(
+    new Uint8ClampedArray(payload.data),
+    payload.width,
+    payload.height
+  );
+}
 
-  if (task === 'process') {
-    try {
-      report(10, 'Menganalisis piksel…');
+function fromImageData(imageData) {
+  return {
+    width: imageData.width,
+    height: imageData.height,
+    data: imageData.data,
+  };
+}
 
-      let result;
-      if (mode === 'fast') {
-        report(40, 'Mempertajam detail…');
-        result = processFast(imageData, settings);
-      } else if (mode === 'pro') {
-        report(25, 'Deblur Richardson-Lucy…');
-        result = processPro(imageData, settings);
-        report(80, 'Finishing Pro…');
-      } else if (mode === 'pre-extreme') {
-        report(20, 'Deblur ekstrem (iteratif)…');
-        result = processExtremePre(imageData, settings);
-        report(70, 'Pra-pemrosesan AI selesai…');
-      } else if (mode === 'post-polish') {
-        report(50, 'Polish akhir…');
-        result = processPostPolish(imageData, settings);
-        report(90, 'Merapikan hasil…');
-      } else {
-        result = processFast(imageData, settings);
-      }
+self.onmessage = async (e) => {
+  const { jobId, task, imageData, settings, mode } = e.data;
 
-      report(100, 'Selesai!');
-      self.postMessage(
-        { type: 'done', imageData: result, mode },
-        [result.data.buffer]
-      );
-    } catch (err) {
-      self.postMessage({ type: 'error', message: err.message || 'Processing failed' });
+  if (task !== 'process') return;
+
+  const input = toImageData(imageData);
+
+  try {
+    report(jobId, 5, 'Worker: memulai pemrosesan…');
+
+    let result;
+
+    if (mode === 'fast') {
+      result = await processFastAsync(input, settings, (pct, msg) => report(jobId, pct, msg));
+    } else if (mode === 'pro') {
+      result = await processProAsync(input, settings, (pct, msg) => report(jobId, pct, msg));
+    } else if (mode === 'pre-extreme') {
+      report(jobId, 20, 'Deblur ekstrem (iteratif)…');
+      result = processExtremePre(input, settings);
+      report(jobId, 70, 'Pra-pemrosesan AI selesai…');
+    } else if (mode === 'post-polish') {
+      report(jobId, 50, 'Polish akhir…');
+      result = processPostPolish(input, settings);
+      report(jobId, 90, 'Merapikan hasil…');
+    } else {
+      result = await processFastAsync(input, settings, (pct, msg) => report(jobId, pct, msg));
     }
+
+    report(jobId, 100, 'Selesai!');
+
+    self.postMessage({
+      jobId,
+      type: 'done',
+      imageData: fromImageData(result),
+      mode,
+    });
+  } catch (err) {
+    self.postMessage({
+      jobId,
+      type: 'error',
+      message: err.message || 'Processing failed',
+    });
   }
 };

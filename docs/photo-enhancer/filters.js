@@ -122,31 +122,88 @@ export function fitMaxDimension(imageData, maxDim) {
   return scaleImageData(imageData, w, h);
 }
 
-/** Laplacian sharpen — amount 0–100, gentle kernel (sum = 1) */
-export function applyConvolutionSharpen(imageData, amount) {
-  if (amount <= 0) return imageData;
+/** Laplacian sharpen 3×3 — matriks konvolusi (sum kernel = 1, aman clipping) */
+export function buildSharpenKernel3x3(amount) {
+  const s = clamp(amount / 100 * 0.22, 0, 0.22);
+  return { s, center: 1 + 4 * s };
+}
 
+function convolveSharpenRows(imageData, copy, yStart, yEnd, kernel) {
   const { width, height, data } = imageData;
-  const copy = new Uint8ClampedArray(data);
-  const s = clamp(amount / 100 * 0.3, 0, 0.3);
+  const { s, center } = kernel;
+  const w4 = width * 4;
 
-  for (let y = 1; y < height - 1; y++) {
+  for (let y = yStart; y < yEnd; y++) {
     for (let x = 1; x < width - 1; x++) {
       const i = (y * width + x) * 4;
+      const iN = i - w4;
+      const iS = i + w4;
+      const iW = i - 4;
+      const iE = i + 4;
+
       for (let c = 0; c < 3; c++) {
-        const center = copy[i + c];
         const val =
-          center * (1 + 4 * s)
-          - copy[i - 4 + c] * s
-          - copy[i + 4 + c] * s
-          - copy[i - width * 4 + c] * s
-          - copy[i + width * 4 + c] * s;
+          copy[i + c] * center
+          - copy[iW + c] * s
+          - copy[iE + c] * s
+          - copy[iN + c] * s
+          - copy[iS + c] * s;
         data[i + c] = clamp(Math.round(val), 0, 255);
       }
     }
   }
+}
+
+/** Konvolusi ketajaman 3×3 sinkron */
+export function applyConvolutionSharpen3x3(imageData, amount) {
+  if (amount <= 0) return imageData;
+
+  const kernel = buildSharpenKernel3x3(amount);
+  const copy = new Uint8ClampedArray(imageData.data);
+  const height = imageData.height;
+
+  convolveSharpenRows(imageData, copy, 1, height - 1, kernel);
+  return imageData;
+}
+
+const CONV_ROW_BATCH = 48;
+
+function yieldToMain() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Konvolusi ketajaman 3×3 asinkron — diproses per-batch baris
+ * (setara coroutine di latar belakang, UI tetap responsif).
+ */
+export async function applyConvolutionSharpen3x3Async(imageData, amount, onProgress) {
+  if (amount <= 0) return imageData;
+
+  const kernel = buildSharpenKernel3x3(amount);
+  const copy = new Uint8ClampedArray(imageData.data);
+  const height = imageData.height;
+  const innerRows = height - 2;
+  let processed = 0;
+
+  for (let yStart = 1; yStart < height - 1; yStart += CONV_ROW_BATCH) {
+    const yEnd = Math.min(height - 1, yStart + CONV_ROW_BATCH);
+    convolveSharpenRows(imageData, copy, yStart, yEnd, kernel);
+    processed += yEnd - yStart;
+
+    if (onProgress && innerRows > 0) {
+      const pct = 15 + (processed / innerRows) * 70;
+      onProgress(pct, 'Konvolusi ketajaman 3×3…');
+    }
+
+    await yieldToMain();
+  }
 
   return imageData;
+}
+
+/** Laplacian sharpen — amount 0–100, gentle kernel (sum = 1) */
+export function applyConvolutionSharpen(imageData, amount) {
+  return applyConvolutionSharpen3x3(imageData, amount);
 }
 
 /** Separable box blur — only used inside unsharp mask (radius 1–2) */
@@ -506,7 +563,7 @@ function applySettingsPipeline(data, settings, { deblur = 0, multiSharpen = fals
   return data;
 }
 
-/** Natural pipeline — luminance-only, edge-aware, no harsh convolution */
+/** Natural pipeline — konvolusi 3×3 async di worker / chunked di main thread */
 export function processClarify(imageData, settings) {
   let data = cloneImageData(imageData);
 
@@ -517,11 +574,57 @@ export function processClarify(imageData, settings) {
   }
 
   if (settings.sharpness > 0) {
-    data = applyNaturalSharpen(data, settings.sharpness);
+    data = applyNaturalSharpen(data, settings.sharpness * 0.35);
+    data = applyConvolutionSharpen3x3(data, settings.sharpness);
   }
 
   if (settings.denoise > 20) {
     data = applyDenoise(data, Math.min(settings.denoise, 45));
+  }
+
+  return data;
+}
+
+export async function processClarifyAsync(imageData, settings, onProgress) {
+  let data = cloneImageData(imageData);
+
+  if (onProgress) onProgress(8, 'Menyesuaikan kecerahan & kontras…');
+  data = applyLuminanceBC(data, settings.brightness, settings.contrast);
+
+  if (settings.clarity > 0) {
+    if (onProgress) onProgress(12, 'Kejelasan lokal…');
+    data = applyNaturalClarity(data, settings.clarity);
+    await yieldToMain();
+  }
+
+  if (settings.sharpness > 0) {
+    if (onProgress) onProgress(14, 'Pra-ketajaman edge-aware…');
+    data = applyNaturalSharpen(data, settings.sharpness * 0.35);
+    await yieldToMain();
+    data = await applyConvolutionSharpen3x3Async(data, settings.sharpness, onProgress);
+  }
+
+  if (settings.denoise > 20) {
+    if (onProgress) onProgress(88, 'Mengurangi noise…');
+    data = applyDenoise(data, Math.min(settings.denoise, 45));
+    await yieldToMain();
+  }
+
+  return data;
+}
+
+export async function processFastAsync(imageData, settings, onProgress) {
+  return processClarifyAsync(imageData, settings, onProgress);
+}
+
+export async function processProAsync(imageData, settings, onProgress) {
+  let data = await processClarifyAsync(imageData, settings, onProgress);
+
+  if (settings.deblur > 50) {
+    if (onProgress) onProgress(90, 'Deblur Richardson-Lucy…');
+    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.35, 22));
+    data = applyNaturalSharpen(data, settings.sharpness * 0.35);
+    await yieldToMain();
   }
 
   return data;

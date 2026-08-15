@@ -2,7 +2,7 @@
  * Foto Jelas Pro — AI-enhanced photo sharpening & deblur
  */
 
-import { fitMaxDimension, scaleImageData, cloneImageData, processFast, processPro, processExtremePre, processPostPolish } from './filters.js';
+import { fitMaxDimension, scaleImageData, cloneImageData, processFastAsync, processProAsync, processExtremePre, processPostPolish } from './filters.js';
 import { isNativeApp, saveAndShareImage, saveToDocuments } from './native.js';
 import {
   blobToImageData,
@@ -42,6 +42,8 @@ const state = {
 let els = {};
 let upscalerCache = {};
 let processTimeout = null;
+let processorWorker = null;
+let workerJobId = 0;
 
 const PRESETS = {
   natural: { mode: 'fast', sharpness: 38, clarity: 22, contrast: 18, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
@@ -182,7 +184,7 @@ function setMode(mode) {
   els.aiBadge.classList.toggle('visible', showBadge);
 
   if (mode === 'fast') {
-    els.aiBadge.textContent = '🌿 Mode Natural — ketajaman halus & warna asli';
+    els.aiBadge.textContent = '🌿 Mode Natural — konvolusi 3×3 latar belakang';
   } else if (isCloudMode(mode)) {
     els.aiBadge.textContent = mode === 'cloud-8'
       ? '☁️ Cloud GPU — Real-ESRGAN 8x'
@@ -229,28 +231,103 @@ function validateImageData(imageData) {
   }
 }
 
-function processOnMainThread(imageData, workerMode) {
+function getProcessorWorker() {
+  if (!processorWorker) {
+    processorWorker = new Worker('./processor.worker.js', { type: 'module' });
+  }
+  return processorWorker;
+}
+
+function imageDataFromPayload(payload) {
+  return new ImageData(
+    new Uint8ClampedArray(payload.data),
+    payload.width,
+    payload.height
+  );
+}
+
+function imageDataToPayload(imageData) {
+  return {
+    width: imageData.width,
+    height: imageData.height,
+    data: imageData.data,
+  };
+}
+
+async function processOnMainThreadAsync(imageData, workerMode) {
   const data = cloneImageData(imageData);
   validateImageData(data);
 
+  const onProgress = (pct, msg) => updateProgress(pct, msg);
+
   switch (workerMode) {
     case 'fast':
-      return processFast(data, state.settings);
+      return await processFastAsync(data, state.settings, onProgress);
     case 'pro':
-      return processPro(data, state.settings);
+      return await processProAsync(data, state.settings, onProgress);
     case 'pre-extreme':
+      updateProgress(20, 'Deblur ekstrem…');
+      await new Promise((r) => setTimeout(r, 0));
       return processExtremePre(data, state.settings);
     case 'post-polish':
+      updateProgress(50, 'Polish akhir…');
+      await new Promise((r) => setTimeout(r, 0));
       return processPostPolish(data, state.settings);
     default:
-      return processFast(data, state.settings);
+      return await processFastAsync(data, state.settings, onProgress);
   }
 }
 
+function runWorkerBackground(task, imageData, workerMode) {
+  return new Promise((resolve, reject) => {
+    const worker = getProcessorWorker();
+    const jobId = ++workerJobId;
+    const input = cloneImageData(imageData);
+    validateImageData(input);
+
+    const onMessage = (e) => {
+      const msg = e.data;
+      if (msg.jobId !== jobId) return;
+
+      if (msg.type === 'progress') {
+        updateProgress(msg.pct, msg.message);
+      } else if (msg.type === 'done') {
+        worker.removeEventListener('message', onMessage);
+        try {
+          const out = imageDataFromPayload(msg.imageData);
+          validateImageData(out);
+          resolve(out);
+        } catch (err) {
+          reject(err);
+        }
+      } else if (msg.type === 'error') {
+        worker.removeEventListener('message', onMessage);
+        reject(new Error(msg.message));
+      }
+    };
+
+    worker.addEventListener('message', onMessage);
+    worker.postMessage({
+      jobId,
+      task,
+      imageData: imageDataToPayload(input),
+      settings: state.settings,
+      mode: workerMode,
+    });
+  });
+}
+
 async function runWorker(task, imageData, workerMode) {
-  updateProgress(25, 'Mempertajam detail…');
-  await new Promise((r) => setTimeout(r, 0));
-  return processOnMainThread(imageData, workerMode);
+  updateProgress(5, 'Konvolusi ketajaman 3×3 (latar belakang)…');
+
+  try {
+    return await runWorkerBackground(task, imageData, workerMode);
+  } catch (workerErr) {
+    console.warn('Worker gagal, fallback main thread async:', workerErr);
+    processorWorker = null;
+    updateProgress(10, 'Konvolusi ketajaman 3×3…');
+    return await processOnMainThreadAsync(imageData, workerMode);
+  }
 }
 
 async function loadUpscaler(scale) {
