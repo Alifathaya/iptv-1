@@ -9,6 +9,9 @@
   <meta name="theme-color" content="#070b14">
   <meta name="description" content="Perjelas foto buram ekstrem dengan AI Super Resolution + deblur canggih.">
   <title>Foto Jelas Pro — AI Photo Enhancer</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -76,11 +79,16 @@
         </button>
         <button type="button" class="mode-btn mode-extreme active" data-mode="extreme">
           <span class="mode-icon">🔥</span>
-          <span class="mode-label">Ekstrem AI</span>
+          <span class="mode-label">AI 4x</span>
+        </button>
+        <button type="button" class="mode-btn mode-ultra" data-mode="ultra">
+          <span class="mode-icon">💎</span>
+          <span class="mode-label">ULTRA 8x</span>
         </button>
       </div>
 
       <div class="presets">
+        <button type="button" class="preset-btn" data-preset="ultra">💎 Ultra</button>
         <button type="button" class="preset-btn active" data-preset="extreme">🔥 Ekstrem</button>
         <button type="button" class="preset-btn" data-preset="blur">Foto Buram</button>
         <button type="button" class="preset-btn" data-preset="document">Dokumen</button>
@@ -140,14 +148,16 @@
       <div class="actions">
         <button type="button" class="btn btn-glow" id="btnEnhance">✦ Proses Lagi</button>
         <button type="button" class="btn btn-primary" id="btnDownload">Simpan Foto HD</button>
+        <button type="button" class="btn btn-share" id="btnShare">Bagikan</button>
         <button type="button" class="btn btn-secondary" id="btnReset">Reset</button>
         <button type="button" class="btn btn-secondary" id="btnNew">Foto Baru</button>
       </div>
     </div>
 
     <div class="note glass">
-      <strong>Mode Ekstrem AI:</strong> Richardson-Lucy deblur → ESRGAN 4x neural upscale → polish akhir.
-      Pertama kali butuh unduh model AI (~5MB). Foto sangat buram parah tetap punya batas fisik, tapi ini yang terkuat di browser.
+      <strong>ULTRA 8x:</strong> Deblur ekstrem → ESRGAN 8x AI → polish — untuk blur parah.
+      Install sebagai app: browser → Tambah ke Layar Utama, atau build APK (lihat BUILD-APK.md).
+      Model AI diunduh pertama kali (~5–15MB, butuh internet).
     </div>
   </div>
 
@@ -165,6 +175,6 @@
     </div>
   </div>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="bundle.js"></script>
 </body>
 </html>

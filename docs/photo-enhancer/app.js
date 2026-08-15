@@ -3,10 +3,13 @@
  */
 
 import { fitMaxDimension, scaleImageData } from './filters.js';
+import { isNativeApp, saveAndShareImage, saveToDocuments } from './native.js';
 
 const AI_INPUT_MAX = 480;
+const AI_INPUT_ULTRA = 320;
 const UPSCALER_URL = 'https://esm.sh/upscaler@1.0.0-beta.19';
 const ESRGAN_X4_URL = 'https://esm.sh/@upscalerjs/esrgan-thick@1.0.0-beta.14/x4';
+const ESRGAN_X8_URL = 'https://esm.sh/@upscalerjs/esrgan-thick@1.0.0-beta.14/x8';
 
 const state = {
   originalImage: null,
@@ -23,59 +26,21 @@ const state = {
   preset: 'extreme',
   comparePosition: 50,
   processing: false,
-  aiReady: false,
 };
 
-const els = {
-  uploadZone: document.getElementById('uploadZone'),
-  fileInput: document.getElementById('fileInput'),
-  workspace: document.getElementById('workspace'),
-  beforeCanvas: document.getElementById('beforeCanvas'),
-  afterCanvas: document.getElementById('afterCanvas'),
-  compareContainer: document.getElementById('compareContainer'),
-  compareAfter: document.getElementById('compareAfter'),
-  compareHandle: document.getElementById('compareHandle'),
-  modeBtns: document.querySelectorAll('.mode-btn'),
-  presetBtns: document.querySelectorAll('.preset-btn'),
-  sliders: {
-    sharpness: document.getElementById('sharpness'),
-    clarity: document.getElementById('clarity'),
-    contrast: document.getElementById('contrast'),
-    brightness: document.getElementById('brightness'),
-    denoise: document.getElementById('denoise'),
-    deblur: document.getElementById('deblur'),
-  },
-  values: {
-    sharpness: document.getElementById('sharpnessValue'),
-    clarity: document.getElementById('clarityValue'),
-    contrast: document.getElementById('contrastValue'),
-    brightness: document.getElementById('brightnessValue'),
-    denoise: document.getElementById('denoiseValue'),
-    deblur: document.getElementById('deblurValue'),
-  },
-  deblurGroup: document.getElementById('deblurGroup'),
-  btnDownload: document.getElementById('btnDownload'),
-  btnReset: document.getElementById('btnReset'),
-  btnNew: document.getElementById('btnNew'),
-  btnEnhance: document.getElementById('btnEnhance'),
-  processingOverlay: document.getElementById('processingOverlay'),
-  progressBar: document.getElementById('progressBar'),
-  progressText: document.getElementById('progressText'),
-  progressStep: document.getElementById('progressStep'),
-  aiBadge: document.getElementById('aiBadge'),
-};
+let els = {};
+let worker;
+let upscalerCache = {};
+let processTimeout = null;
 
 const PRESETS = {
+  ultra: { mode: 'ultra', sharpness: 80, clarity: 60, contrast: 35, brightness: 5, denoise: 35, deblur: 95, upscale: 0 },
   extreme: { mode: 'extreme', sharpness: 70, clarity: 55, contrast: 30, brightness: 5, denoise: 30, deblur: 85, upscale: 0 },
   blur: { mode: 'pro', sharpness: 75, clarity: 55, contrast: 25, brightness: 5, denoise: 30, deblur: 70, upscale: 0 },
   document: { mode: 'pro', sharpness: 90, clarity: 35, contrast: 50, brightness: 10, denoise: 15, deblur: 60, upscale: 0 },
   portrait: { mode: 'pro', sharpness: 45, clarity: 40, contrast: 15, brightness: 5, denoise: 40, deblur: 40, upscale: 0 },
   auto: { mode: 'fast', sharpness: 50, clarity: 40, contrast: 20, brightness: 0, denoise: 15, deblur: 0, upscale: 0 },
 };
-
-let worker = new Worker('./processor.worker.js', { type: 'module' });
-let upscalerInstance = null;
-let processTimeout = null;
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -159,10 +124,9 @@ function setProcessing(active) {
   state.processing = active;
   els.processingOverlay.classList.toggle('visible', active);
   els.btnDownload.disabled = active;
+  els.btnShare.disabled = active;
   els.btnEnhance.disabled = active;
-  if (!active) {
-    updateProgress(0, '');
-  }
+  if (!active) updateProgress(0, '');
 }
 
 function updateSliderUI() {
@@ -178,13 +142,20 @@ function formatSliderValue(key, val) {
   return String(val);
 }
 
+function isAiMode(mode = state.mode) {
+  return mode === 'extreme' || mode === 'ultra';
+}
+
 function setMode(mode) {
   state.mode = mode;
   els.modeBtns.forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
   els.deblurGroup.style.display = mode === 'fast' ? 'none' : 'block';
-  els.aiBadge.classList.toggle('visible', mode === 'extreme');
+  els.aiBadge.classList.toggle('visible', isAiMode(mode));
+  els.aiBadge.textContent = mode === 'ultra'
+    ? 'Mode ULTRA — ESRGAN 8x aktif'
+    : 'Mode AI ESRGAN 4x aktif';
 }
 
 function applyPreset(name) {
@@ -244,34 +215,34 @@ function runWorker(task, imageData, workerMode) {
   });
 }
 
-async function loadUpscaler() {
-  if (upscalerInstance) return upscalerInstance;
+async function loadUpscaler(scale) {
+  const key = `x${scale}`;
+  if (upscalerCache[key]) return upscalerCache[key];
 
-  updateProgress(5, 'Mengunduh model AI ESRGAN…');
+  updateProgress(5, `Mengunduh model AI ESRGAN ${scale}x…`);
 
   const { default: Upscaler } = await import(UPSCALER_URL);
-  const { default: x4 } = await import(ESRGAN_X4_URL);
+  const modelUrl = scale === 8 ? ESRGAN_X8_URL : ESRGAN_X4_URL;
+  const { default: model } = await import(modelUrl);
 
-  upscalerInstance = new Upscaler({
-    model: x4,
-  });
-
-  state.aiReady = true;
-  return upscalerInstance;
+  upscalerCache[key] = new Upscaler({ model });
+  return upscalerCache[key];
 }
 
-async function aiUpscale4x(imageData) {
-  const upscaler = await loadUpscaler();
-  const work = fitMaxDimension(imageData, AI_INPUT_MAX);
+async function aiUpscale(imageData, scale) {
+  const upscaler = await loadUpscaler(scale);
+  const maxInput = scale === 8 ? AI_INPUT_ULTRA : AI_INPUT_MAX;
+  const work = fitMaxDimension(imageData, maxInput);
   const canvas = imageDataToCanvas(work);
   const img = await canvasToImage(canvas);
 
-  updateProgress(40, 'Neural network membangun detail 4x…');
+  const label = `AI Super Resolution ${scale}x…`;
+  updateProgress(40, label);
 
   const upscaled = await upscaler.upscale(img, {
     progress: (pct) => {
       const normalized = pct <= 1 ? pct : pct / 100;
-      updateProgress(40 + normalized * 45, 'AI Super Resolution 4x…');
+      updateProgress(40 + normalized * 45, label);
     },
   });
 
@@ -284,6 +255,26 @@ async function aiUpscale4x(imageData) {
   }
 
   throw new Error('Format hasil AI tidak dikenali');
+}
+
+async function runAiPipeline(sourceData, scale) {
+  updateProgress(8, 'Deblur ekstrem (Richardson-Lucy)…');
+  const prepped = await runWorker('process', sourceData, 'pre-extreme');
+
+  let result;
+  try {
+    result = await aiUpscale(prepped, scale);
+  } catch (aiErr) {
+    console.warn('AI upscale failed, using algorithmic fallback:', aiErr);
+    updateProgress(50, 'AI gagal — upscale algoritmik…');
+    const mult = scale === 8 ? 4 : 2;
+    const fallback = scaleImageData(prepped, prepped.width * mult, prepped.height * mult);
+    result = await runWorker('process', fallback, 'post-polish');
+    return result;
+  }
+
+  updateProgress(88, 'Polish akhir…');
+  return await runWorker('process', result, 'post-polish');
 }
 
 async function processAndRender() {
@@ -301,20 +292,9 @@ async function processAndRender() {
     } else if (state.mode === 'pro') {
       result = await runWorker('process', sourceData, 'pro');
     } else if (state.mode === 'extreme') {
-      updateProgress(8, 'Deblur ekstrem (Richardson-Lucy)…');
-      const prepped = await runWorker('process', sourceData, 'pre-extreme');
-
-      try {
-        result = await aiUpscale4x(prepped);
-      } catch (aiErr) {
-        console.warn('AI upscale failed, using algorithmic fallback:', aiErr);
-        updateProgress(50, 'AI gagal — upscale algoritmik 2x…');
-        const fallback = scaleImageData(prepped, prepped.width * 2, prepped.height * 2);
-        result = await runWorker('process', fallback, 'post-polish');
-      }
-
-      updateProgress(88, 'Polish akhir…');
-      result = await runWorker('process', result, 'post-polish');
+      result = await runAiPipeline(sourceData, 4);
+    } else if (state.mode === 'ultra') {
+      result = await runAiPipeline(sourceData, 8);
     }
 
     els.afterCanvas.width = result.width;
@@ -358,7 +338,7 @@ async function handleFile(file) {
     els.workspace.classList.add('active');
     els.compareContainer.style.aspectRatio = `${dims.width} / ${dims.height}`;
 
-    applyPreset('extreme');
+    applyPreset(isNativeApp() ? 'ultra' : 'extreme');
     updateComparePosition(50);
     await processAndRender();
   } catch {
@@ -368,12 +348,60 @@ async function handleFile(file) {
   }
 }
 
-function downloadResult() {
+function getResultDataUrl() {
+  return els.afterCanvas.toDataURL('image/png');
+}
+
+async function downloadResult() {
+  const dataUrl = getResultDataUrl();
+
+  if (isNativeApp()) {
+    try {
+      const fileName = await saveToDocuments(dataUrl);
+      alert(`Foto disimpan ke Documents/${fileName}`);
+    } catch (err) {
+      console.error(err);
+      alert('Gagal menyimpan. Coba Bagikan.');
+    }
+    return;
+  }
+
   const link = document.createElement('a');
   const timestamp = new Date().toISOString().slice(0, 10);
   link.download = `foto-jelas-pro-${timestamp}.png`;
-  link.href = els.afterCanvas.toDataURL('image/png');
+  link.href = dataUrl;
   link.click();
+}
+
+async function shareResult() {
+  const dataUrl = getResultDataUrl();
+
+  if (isNativeApp()) {
+    try {
+      await saveAndShareImage(dataUrl);
+    } catch (err) {
+      if (err?.message !== 'Share canceled') {
+        console.error(err);
+        alert('Gagal membagikan foto.');
+      }
+    }
+    return;
+  }
+
+  if (navigator.share && navigator.canShare) {
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], 'foto-jelas-pro.png', { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Foto Jelas Pro' });
+        return;
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+  }
+
+  downloadResult();
 }
 
 function resetSettings() {
@@ -451,7 +479,7 @@ function initControls() {
       els.values[key].textContent = formatSliderValue(key, state.settings[key]);
       state.preset = 'custom';
       els.presetBtns.forEach((btn) => btn.classList.remove('active'));
-      if (state.mode !== 'extreme') scheduleProcess();
+      if (!isAiMode()) scheduleProcess();
     });
   });
 
@@ -472,20 +500,71 @@ function initControls() {
   });
 
   els.btnDownload.addEventListener('click', downloadResult);
+  els.btnShare.addEventListener('click', shareResult);
   els.btnReset.addEventListener('click', resetSettings);
   els.btnNew.addEventListener('click', resetApp);
   els.btnEnhance.addEventListener('click', () => processAndRender());
 }
 
-initUpload();
-initControls();
-initCompareSlider();
-setMode('extreme');
-updateSliderUI();
+function bindElements() {
+  els = {
+    uploadZone: document.getElementById('uploadZone'),
+    fileInput: document.getElementById('fileInput'),
+    workspace: document.getElementById('workspace'),
+    beforeCanvas: document.getElementById('beforeCanvas'),
+    afterCanvas: document.getElementById('afterCanvas'),
+    compareContainer: document.getElementById('compareContainer'),
+    compareAfter: document.getElementById('compareAfter'),
+    compareHandle: document.getElementById('compareHandle'),
+    modeBtns: document.querySelectorAll('.mode-btn'),
+    presetBtns: document.querySelectorAll('.preset-btn'),
+    sliders: {
+      sharpness: document.getElementById('sharpness'),
+      clarity: document.getElementById('clarity'),
+      contrast: document.getElementById('contrast'),
+      brightness: document.getElementById('brightness'),
+      denoise: document.getElementById('denoise'),
+      deblur: document.getElementById('deblur'),
+    },
+    values: {
+      sharpness: document.getElementById('sharpnessValue'),
+      clarity: document.getElementById('clarityValue'),
+      contrast: document.getElementById('contrastValue'),
+      brightness: document.getElementById('brightnessValue'),
+      denoise: document.getElementById('denoiseValue'),
+      deblur: document.getElementById('deblurValue'),
+    },
+    deblurGroup: document.getElementById('deblurGroup'),
+    btnDownload: document.getElementById('btnDownload'),
+    btnShare: document.getElementById('btnShare'),
+    btnReset: document.getElementById('btnReset'),
+    btnNew: document.getElementById('btnNew'),
+    btnEnhance: document.getElementById('btnEnhance'),
+    processingOverlay: document.getElementById('processingOverlay'),
+    progressBar: document.getElementById('progressBar'),
+    progressText: document.getElementById('progressText'),
+    progressStep: document.getElementById('progressStep'),
+    aiBadge: document.getElementById('aiBadge'),
+  };
+}
 
-// Pre-warm AI model hint on idle
-if ('requestIdleCallback' in window) {
-  requestIdleCallback(() => {
-    loadUpscaler().catch(() => {});
-  }, { timeout: 8000 });
+export function initApp() {
+  bindElements();
+  worker = new Worker('./processor.worker.js', { type: 'module' });
+
+  initUpload();
+  initControls();
+  initCompareSlider();
+  setMode('extreme');
+  updateSliderUI();
+
+  if (isNativeApp()) {
+    document.body.classList.add('native-app');
+  }
+
+  if ('requestIdleCallback' in window && !isNativeApp()) {
+    requestIdleCallback(() => {
+      loadUpscaler(4).catch(() => {});
+    }, { timeout: 8000 });
+  }
 }
