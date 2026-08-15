@@ -33,9 +33,10 @@ const state = {
     deblur: 80,
     upscale: 0,
   },
-  preset: 'extreme',
+  preset: 'jelas',
   comparePosition: 50,
   processing: false,
+  exportImageData: null,
 };
 
 let els = {};
@@ -44,7 +45,7 @@ let upscalerCache = {};
 let processTimeout = null;
 
 const PRESETS = {
-  jelas: { mode: 'fast', sharpness: 70, clarity: 55, contrast: 40, brightness: 5, denoise: 0, deblur: 0, upscale: 0 },
+  jelas: { mode: 'fast', sharpness: 85, clarity: 50, contrast: 45, brightness: 3, denoise: 0, deblur: 0, upscale: 0 },
   cloud: { mode: 'cloud-8', sharpness: 70, clarity: 50, contrast: 35, brightness: 5, denoise: 15, deblur: 30, upscale: 0 },
   ultra: { mode: 'ultra', sharpness: 75, clarity: 50, contrast: 35, brightness: 5, denoise: 20, deblur: 35, upscale: 0 },
   extreme: { mode: 'extreme', sharpness: 70, clarity: 50, contrast: 30, brightness: 5, denoise: 20, deblur: 30, upscale: 0 },
@@ -60,7 +61,7 @@ function clamp(v, min, max) {
 
 function scaleDimensions(width, height) {
   const maxSide = Math.max(width, height);
-  const maxDim = 2048;
+  const maxDim = 3072;
   if (maxSide <= maxDim) return { width, height };
   const scale = maxDim / maxSide;
   return { width: Math.round(width * scale), height: Math.round(height * scale) };
@@ -83,9 +84,12 @@ function loadImageFromFile(file) {
 function drawImageToCanvas(img, canvas, width, height) {
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
   ctx.fillStyle = '#050508';
   ctx.fillRect(0, 0, width, height);
+  const downscaling = width < img.naturalWidth || height < img.naturalHeight;
+  ctx.imageSmoothingEnabled = downscaling;
+  if (downscaling) ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, 0, 0, width, height);
 }
 
@@ -358,6 +362,7 @@ async function processAndRender() {
       result = await runCloudPipeline(sourceData, 8);
     }
 
+    state.exportImageData = result;
     els.afterCanvas.width = result.width;
     els.afterCanvas.height = result.height;
     putImageData(els.afterCanvas, result);
@@ -411,6 +416,11 @@ async function handleFile(file) {
 }
 
 function getResultDataUrl() {
+  const data = state.exportImageData;
+  if (data) {
+    const canvas = imageDataToCanvas(data);
+    return canvas.toDataURL('image/png');
+  }
   return els.afterCanvas.toDataURL('image/png');
 }
 
@@ -661,11 +671,5 @@ export function initApp() {
 
   if (isNativeApp()) {
     document.body.classList.add('native-app');
-  }
-
-  if ('requestIdleCallback' in window && !isNativeApp()) {
-    requestIdleCallback(() => {
-      loadUpscaler(4).catch(() => {});
-    }, { timeout: 8000 });
   }
 }

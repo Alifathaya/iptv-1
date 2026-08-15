@@ -20,7 +20,8 @@ export function scaleImageData(imageData, newW, newH) {
 
   const destCanvas = new OffscreenCanvas(newW, newH);
   const ctx = destCanvas.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
+  const upscaling = newW > imageData.width || newH > imageData.height;
+  ctx.imageSmoothingEnabled = !upscaling;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(srcCanvas, 0, 0, newW, newH);
 
@@ -36,7 +37,34 @@ export function fitMaxDimension(imageData, maxDim) {
   return scaleImageData(imageData, w, h);
 }
 
-/** Separable box blur */
+/** Laplacian convolution sharpen — no blur, only adds edge detail */
+export function applyConvolutionSharpen(imageData, amount) {
+  if (amount <= 0) return imageData;
+
+  const { width, height, data } = imageData;
+  const copy = new Uint8ClampedArray(data);
+  const s = amount * 0.1;
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const i = (y * width + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        const center = copy[i + c];
+        const val =
+          center * (1 + 4 * s)
+          - copy[i - 4 + c] * s
+          - copy[i + 4 + c] * s
+          - copy[i - width * 4 + c] * s
+          - copy[i + width * 4 + c] * s;
+        data[i + c] = clamp(Math.round(val), 0, 255);
+      }
+    }
+  }
+
+  return imageData;
+}
+
+/** Separable box blur — only used inside unsharp mask (radius 1–2) */
 export function boxBlur(imageData, radius) {
   if (radius <= 0) return cloneImageData(imageData);
 
@@ -393,21 +421,19 @@ function applySettingsPipeline(data, settings, { deblur = 0, multiSharpen = fals
   return data;
 }
 
-/** Sharpen-first pipeline — best for making photos clearer (no blur) */
+/** Sharpen-first pipeline — ZERO blur/denoise/deblur (safe default) */
 export function processClarify(imageData, settings) {
   let data = cloneImageData(imageData);
 
-  data = applyBrightnessContrast(data, settings.brightness, settings.contrast * 1.5);
-  data = applyClarity(data, Math.max(settings.clarity, 35));
-  data = applyLocalContrast(data, settings.sharpness * 0.75);
-  data = applyHighPassSharpen(data, settings.sharpness);
-  data = applyUnsharpMask(data, settings.sharpness, 1);
-  data = applyUnsharpMask(data, settings.sharpness * 0.55, 2);
-  data = applyEdgeEnhance(data, settings.sharpness * 0.45);
+  const sharp = Math.max(settings.sharpness, 55);
+  const clarityExtra = settings.clarity * 0.5;
+  const contrastVal = 12 + settings.contrast * 1.4;
 
-  if (settings.denoise > 50) {
-    data = applyDenoise(data, settings.denoise - 20);
-  }
+  data = applyConvolutionSharpen(data, sharp + clarityExtra);
+  data = applyUnsharpMask(data, sharp * 1.4, 1);
+  data = applyConvolutionSharpen(data, (sharp + clarityExtra) * 0.45);
+  data = applyUnsharpMask(data, sharp * 0.8, 1);
+  data = applyBrightnessContrast(data, settings.brightness, contrastVal);
 
   return data;
 }
@@ -417,30 +443,26 @@ export function processFast(imageData, settings) {
 }
 
 export function processPro(imageData, settings) {
-  let data = cloneImageData(imageData);
-  const deblurStrength = settings.deblur > 0 ? Math.min(settings.deblur, 40) : 0;
+  let data = processClarify(imageData, settings);
 
-  data = applySettingsPipeline(data, settings, {
-    deblur: deblurStrength,
-    multiSharpen: true,
-    localContrast: true,
-  });
-  data = applyEdgeEnhance(data, settings.sharpness * 0.5);
-  data = applyHighPassSharpen(data, settings.sharpness * 0.4);
+  if (settings.deblur > 50) {
+    data = applyRichardsonLucy(data, Math.min(settings.deblur, 35));
+    data = applyConvolutionSharpen(data, settings.sharpness * 0.6);
+    data = applyUnsharpMask(data, settings.sharpness, 1);
+  }
 
   return data;
 }
 
 export function processExtremePre(imageData, settings) {
-  let data = fitMaxDimension(imageData, 1024);
-  const deblurStrength = settings.deblur > 0 ? Math.min(settings.deblur, 35) : 0;
+  let data = fitMaxDimension(imageData, 1280);
 
-  data = applyClarity(data, settings.clarity);
-  data = applyHighPassSharpen(data, settings.sharpness);
-  data = applyUnsharpMask(data, settings.sharpness, 1);
+  data = applyConvolutionSharpen(data, Math.min(settings.sharpness, 45));
+  data = applyUnsharpMask(data, settings.sharpness * 0.8, 1);
 
-  if (deblurStrength > 0) {
-    data = applyRichardsonLucy(data, deblurStrength);
+  if (settings.deblur > 55) {
+    data = applyRichardsonLucy(data, Math.min(settings.deblur, 35));
+    data = applyConvolutionSharpen(data, settings.sharpness * 0.5);
   }
 
   return data;
@@ -448,12 +470,12 @@ export function processExtremePre(imageData, settings) {
 
 export function processPostPolish(imageData, settings) {
   let data = cloneImageData(imageData);
+  const sharp = Math.max(settings.sharpness, 50);
 
-  data = applyClarity(data, Math.max(settings.clarity, 30));
-  data = applyHighPassSharpen(data, Math.max(settings.sharpness, 40));
-  data = applyMultiPassSharpen(data, Math.max(settings.sharpness, 40));
-  data = applyEdgeEnhance(data, settings.sharpness * 0.35);
-  data = applyBrightnessContrast(data, settings.brightness, settings.contrast * 1.2);
+  data = applyConvolutionSharpen(data, sharp);
+  data = applyUnsharpMask(data, sharp * 1.3, 1);
+  data = applyConvolutionSharpen(data, sharp * 0.35);
+  data = applyBrightnessContrast(data, settings.brightness, 10 + settings.contrast * 1.2);
 
   return data;
 }
