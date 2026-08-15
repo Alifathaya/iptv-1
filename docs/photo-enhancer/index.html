@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Foto Jelas">
+  <meta name="theme-color" content="#0c1220">
+  <meta name="description" content="Perjelas dan pertajam foto buram — langsung di browser, tanpa upload ke server.">
+  <title>Foto Jelas — Perjelas Foto Buram</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Foto Jelas</h1>
+      <p>Perjelas & pertajam foto buram langsung di perangkat Anda</p>
+    </header>
+
+    <div class="upload-zone" id="uploadZone">
+      <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+      </svg>
+      <h2>Pilih atau seret foto</h2>
+      <p>JPG, PNG, WebP — diproses di browser, tidak dikirim ke server</p>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <div class="workspace" id="workspace">
+      <div class="compare-wrap">
+        <div class="compare-container" id="compareContainer">
+          <div class="compare-before">
+            <canvas id="beforeCanvas" aria-label="Foto asli"></canvas>
+          </div>
+          <div class="compare-after" id="compareAfter">
+            <canvas id="afterCanvas" aria-label="Foto setelah diperjelas"></canvas>
+          </div>
+          <div class="compare-handle" id="compareHandle" role="slider" aria-label="Bandingkan sebelum dan sesudah" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></div>
+        </div>
+        <div class="compare-labels">
+          <span id="labelBefore" class="active">Sebelum</span>
+          <span>Geser untuk bandingkan</span>
+          <span id="labelAfter" class="active">Sesudah</span>
+        </div>
+      </div>
+
+      <div class="presets">
+        <button type="button" class="preset-btn active" data-preset="auto">Jelas Auto</button>
+        <button type="button" class="preset-btn" data-preset="blur">Foto Buram</button>
+        <button type="button" class="preset-btn" data-preset="document">Dokumen / Teks</button>
+        <button type="button" class="preset-btn" data-preset="soft">Lembut</button>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <div class="control-header">
+            <label for="sharpness">Ketajaman</label>
+            <span class="control-value" id="sharpnessValue">50</span>
+          </div>
+          <input type="range" id="sharpness" min="0" max="100" value="50">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="clarity">Kejelasan</label>
+            <span class="control-value" id="clarityValue">40</span>
+          </div>
+          <input type="range" id="clarity" min="0" max="100" value="40">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="contrast">Kontras</label>
+            <span class="control-value" id="contrastValue">20</span>
+          </div>
+          <input type="range" id="contrast" min="0" max="100" value="20">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="brightness">Kecerahan</label>
+            <span class="control-value" id="brightnessValue">0</span>
+          </div>
+          <input type="range" id="brightness" min="-50" max="50" value="0">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="denoise">Kurangi Noise</label>
+            <span class="control-value" id="denoiseValue">15</span>
+          </div>
+          <input type="range" id="denoise" min="0" max="100" value="15">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="upscale">Perbesar (AI-lite)</label>
+            <span class="control-value" id="upscaleValue">0%</span>
+          </div>
+          <input type="range" id="upscale" min="0" max="100" value="0">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="btnDownload">Simpan Foto</button>
+        <button type="button" class="btn btn-secondary" id="btnReset">Reset Pengaturan</button>
+        <button type="button" class="btn btn-secondary" id="btnNew">Foto Baru</button>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>Catatan:</strong> Aplikasi ini memperjelas foto dengan algoritma ketajaman & kontras.
+      Untuk foto sangat buram (motion blur, out of focus), hasil terbaik biasanya membutuhkan AI deblur profesional.
+      Semua pemrosesan dilakukan di perangkat Anda — foto tidak diupload ke server.
+    </div>
+  </div>
+
+  <div class="processing-overlay" id="processingOverlay" aria-live="polite">
+    <div class="processing-box">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Memproses foto…</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
