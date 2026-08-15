@@ -1,6 +1,7 @@
 backend/weights/
 backend/.env
-android/.gradle/
+android/local.properties
+android-sdk/
 android/app/build/
 android/build/
 android/local.properties

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#070b14">
+  <title>Install Foto Jelas Pro — APK Android</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', system-ui, sans-serif;
+      background: #070b14;
+      color: #f0f4ff;
+      min-height: 100vh;
+      padding: 1.5rem 1rem 3rem;
+    }
+    .wrap { max-width: 480px; margin: 0 auto; }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      margin-bottom: 0.25rem;
+    }
+    h1 span {
+      background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .sub { color: #8b9ab8; font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .card {
+      background: rgba(18, 24, 42, 0.85);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 { font-size: 1rem; margin-bottom: 0.75rem; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 1rem;
+      border: none;
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 700;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+      margin-bottom: 0.6rem;
+    }
+    .btn-download {
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      color: #fff;
+      box-shadow: 0 8px 32px rgba(99, 102, 241, 0.35);
+    }
+    .btn-open {
+      background: rgba(255,255,255,0.08);
+      color: #f0f4ff;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .steps { font-size: 0.85rem; color: #8b9ab8; line-height: 1.6; }
+    .steps li { margin-bottom: 0.5rem; }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      background: rgba(34, 211, 238, 0.15);
+      color: #67e8f9;
+      margin-bottom: 0.75rem;
+    }
+    .preview {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 1rem;
+      background: #050508;
+    }
+    .preview iframe {
+      width: 100%;
+      height: 520px;
+      border: none;
+    }
+    .meta { font-size: 0.78rem; color: #6b7280; text-align: center; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <span class="badge">v2.0.0 debug · com.fotojelas.pro</span>
+    <h1>Foto Jelas <span>Pro</span></h1>
+    <p class="sub">Perjelas foto buram ekstrem — AI + Cloud GPU</p>
+
+    <div class="card">
+      <h2>📱 Download APK</h2>
+      <a class="btn btn-download" href="releases/FotoJelasPro.apk" download>
+        Download FotoJelasPro.apk
+      </a>
+      <a class="btn btn-open" href="photo-enhancer/">
+        Buka Dashboard / Web App
+      </a>
+    </div>
+
+    <div class="card">
+      <h2>👀 Preview Dashboard</h2>
+      <div class="preview">
+        <iframe src="photo-enhancer/" title="Foto Jelas Pro Dashboard"></iframe>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📲 Cara install di HP</h2>
+      <ol class="steps">
+        <li>Download APK di atas (buka link di Chrome Android)</li>
+        <li>Buka file <strong>FotoJelasPro.apk</strong> dari notifikasi atau folder Download</li>
+        <li>Jika diminta, izinkan <strong>Install dari sumber tidak dikenal</strong></li>
+        <li>Tap <strong>Install</strong> → buka app</li>
+        <li>Mode default: <strong>ULTRA 8x</strong> — butuh internet pertama kali untuk model AI</li>
+      </ol>
+    </div>
+
+    <p class="meta">Debug build · Untuk testing. Butuh Android 6+.</p>
+  </div>
+</body>
+</html>
