@@ -6,6 +6,91 @@ export function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
+function luminance(r, g, b) {
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+/** Brightness/contrast on luminance — preserves hue and avoids color shifts */
+export function applyLuminanceBC(imageData, brightness, contrast) {
+  if (brightness === 0 && contrast === 0) return imageData;
+
+  const data = imageData.data;
+  const b = brightness * 2.55;
+  const c = contrast * 0.9;
+  const factor = c === 0 ? 1 : (259 * (c + 255)) / (255 * (259 - c));
+
+  for (let i = 0; i < data.length; i += 4) {
+    const lum = luminance(data[i], data[i + 1], data[i + 2]);
+    let newLum = lum + b;
+    if (c !== 0) newLum = factor * (newLum - 128) + 128;
+    newLum = clamp(newLum, 0, 255);
+
+    if (lum > 1) {
+      const scale = newLum / lum;
+      data[i] = clamp(Math.round(data[i] * scale), 0, 255);
+      data[i + 1] = clamp(Math.round(data[i + 1] * scale), 0, 255);
+      data[i + 2] = clamp(Math.round(data[i + 2] * scale), 0, 255);
+    }
+  }
+
+  return imageData;
+}
+
+/** Edge-aware sharpen on luminance — boosts real edges, not grain/noise */
+export function applyNaturalSharpen(imageData, amount) {
+  if (amount <= 0) return imageData;
+
+  const blurred = boxBlur(imageData, 1);
+  const src = imageData.data;
+  const blur = blurred.data;
+  const strength = clamp(amount / 100 * 0.42, 0, 0.42);
+
+  for (let i = 0; i < src.length; i += 4) {
+    const lum = luminance(src[i], src[i + 1], src[i + 2]);
+    const lumBlur = luminance(blur[i], blur[i + 1], blur[i + 2]);
+    const detail = lum - lumBlur;
+    const edge = clamp(Math.abs(detail) / 18, 0, 1);
+
+    if (edge < 0.12) continue;
+
+    const boost = detail * strength * edge;
+    if (lum > 1) {
+      const scale = (lum + boost) / lum;
+      src[i] = clamp(Math.round(src[i] * scale), 0, 255);
+      src[i + 1] = clamp(Math.round(src[i + 1] * scale), 0, 255);
+      src[i + 2] = clamp(Math.round(src[i + 2] * scale), 0, 255);
+    }
+  }
+
+  return imageData;
+}
+
+/** Local mid-tone clarity on luminance — gentle, face-friendly */
+export function applyNaturalClarity(imageData, amount) {
+  if (amount <= 0) return imageData;
+
+  const blurred = boxBlur(imageData, 7);
+  const src = imageData.data;
+  const blur = blurred.data;
+  const strength = amount / 100 * 0.28;
+
+  for (let i = 0; i < src.length; i += 4) {
+    const lum = luminance(src[i], src[i + 1], src[i + 2]);
+    const lumBlur = luminance(blur[i], blur[i + 1], blur[i + 2]);
+    const midWeight = 1 - Math.pow(Math.abs(lum - 128) / 128, 1.4);
+    const detail = (lum - lumBlur) * strength * midWeight;
+
+    if (lum > 1 && Math.abs(detail) > 0.2) {
+      const scale = (lum + detail) / lum;
+      src[i] = clamp(Math.round(src[i] * scale), 0, 255);
+      src[i + 1] = clamp(Math.round(src[i + 1] * scale), 0, 255);
+      src[i + 2] = clamp(Math.round(src[i + 2] * scale), 0, 255);
+    }
+  }
+
+  return imageData;
+}
+
 export function cloneImageData(imageData) {
   return new ImageData(
     new Uint8ClampedArray(imageData.data),
@@ -421,20 +506,22 @@ function applySettingsPipeline(data, settings, { deblur = 0, multiSharpen = fals
   return data;
 }
 
-/** Natural clarify — one gentle sharpen pass, no clipping */
+/** Natural pipeline — luminance-only, edge-aware, no harsh convolution */
 export function processClarify(imageData, settings) {
   let data = cloneImageData(imageData);
 
-  const contrastVal = settings.contrast * 0.55;
-  data = applyBrightnessContrast(data, settings.brightness, contrastVal);
-  data = applyUnsharpMask(data, settings.sharpness, 1);
+  data = applyLuminanceBC(data, settings.brightness, settings.contrast);
 
-  if (settings.sharpness > 35) {
-    data = applyConvolutionSharpen(data, settings.sharpness * 0.45);
+  if (settings.clarity > 0) {
+    data = applyNaturalClarity(data, settings.clarity);
   }
 
-  if (settings.clarity > 30) {
-    data = applyUnsharpMask(data, settings.clarity * 0.5, 1);
+  if (settings.sharpness > 0) {
+    data = applyNaturalSharpen(data, settings.sharpness);
+  }
+
+  if (settings.denoise > 20) {
+    data = applyDenoise(data, Math.min(settings.denoise, 45));
   }
 
   return data;
@@ -447,9 +534,9 @@ export function processFast(imageData, settings) {
 export function processPro(imageData, settings) {
   let data = processClarify(imageData, settings);
 
-  if (settings.deblur > 55) {
-    data = applyRichardsonLucy(data, Math.min(settings.deblur, 30));
-    data = applyUnsharpMask(data, settings.sharpness * 0.5, 1);
+  if (settings.deblur > 50) {
+    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.35, 22));
+    data = applyNaturalSharpen(data, settings.sharpness * 0.35);
   }
 
   return data;
@@ -457,10 +544,10 @@ export function processPro(imageData, settings) {
 
 export function processExtremePre(imageData, settings) {
   let data = fitMaxDimension(imageData, 1280);
-  data = applyUnsharpMask(data, Math.min(settings.sharpness, 50), 1);
+  data = applyNaturalSharpen(data, Math.min(settings.sharpness, 38));
 
-  if (settings.deblur > 60) {
-    data = applyRichardsonLucy(data, Math.min(settings.deblur, 30));
+  if (settings.deblur > 65) {
+    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.3, 20));
   }
 
   return data;
@@ -468,7 +555,7 @@ export function processExtremePre(imageData, settings) {
 
 export function processPostPolish(imageData, settings) {
   let data = cloneImageData(imageData);
-  data = applyUnsharpMask(data, Math.min(settings.sharpness, 60), 1);
-  data = applyBrightnessContrast(data, settings.brightness, settings.contrast * 0.5);
+  data = applyLuminanceBC(data, settings.brightness, settings.contrast * 0.35);
+  data = applyNaturalSharpen(data, Math.min(settings.sharpness, 40));
   return data;
 }
