@@ -2,7 +2,7 @@
  * Foto Jelas Pro — AI-enhanced photo sharpening & deblur
  */
 
-import { fitMaxDimension, scaleImageData } from './filters.js';
+import { fitMaxDimension, scaleImageData, cloneImageData, processFast, processPro, processExtremePre, processPostPolish } from './filters.js';
 import { isNativeApp, saveAndShareImage, saveToDocuments } from './native.js';
 import {
   blobToImageData,
@@ -40,12 +40,11 @@ const state = {
 };
 
 let els = {};
-let worker;
 let upscalerCache = {};
 let processTimeout = null;
 
 const PRESETS = {
-  jelas: { mode: 'fast', sharpness: 85, clarity: 50, contrast: 45, brightness: 3, denoise: 0, deblur: 0, upscale: 0 },
+  jelas: { mode: 'fast', sharpness: 55, clarity: 40, contrast: 30, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
   cloud: { mode: 'cloud-8', sharpness: 70, clarity: 50, contrast: 35, brightness: 5, denoise: 15, deblur: 30, upscale: 0 },
   ultra: { mode: 'ultra', sharpness: 75, clarity: 50, contrast: 35, brightness: 5, denoise: 20, deblur: 35, upscale: 0 },
   extreme: { mode: 'extreme', sharpness: 70, clarity: 50, contrast: 30, brightness: 5, denoise: 20, deblur: 30, upscale: 0 },
@@ -222,33 +221,35 @@ function updateComparePosition(percent) {
   els.compareHandle.style.left = `${state.comparePosition}%`;
 }
 
-function runWorker(task, imageData, workerMode) {
-  return new Promise((resolve, reject) => {
-    const clone = new ImageData(
-      new Uint8ClampedArray(imageData.data),
-      imageData.width,
-      imageData.height
-    );
+function validateImageData(imageData) {
+  const expected = imageData.width * imageData.height * 4;
+  if (!imageData.data || imageData.data.length !== expected) {
+    throw new Error('Data gambar rusak — coba foto lain');
+  }
+}
 
-    const handler = (e) => {
-      const msg = e.data;
-      if (msg.type === 'progress') {
-        updateProgress(msg.pct, msg.message);
-      } else if (msg.type === 'done' && msg.mode === workerMode) {
-        worker.removeEventListener('message', handler);
-        resolve(msg.imageData);
-      } else if (msg.type === 'error') {
-        worker.removeEventListener('message', handler);
-        reject(new Error(msg.message));
-      }
-    };
+function processOnMainThread(imageData, workerMode) {
+  const data = cloneImageData(imageData);
+  validateImageData(data);
 
-    worker.addEventListener('message', handler);
-    worker.postMessage(
-      { task, imageData: clone, settings: state.settings, mode: workerMode },
-      [clone.data.buffer]
-    );
-  });
+  switch (workerMode) {
+    case 'fast':
+      return processFast(data, state.settings);
+    case 'pro':
+      return processPro(data, state.settings);
+    case 'pre-extreme':
+      return processExtremePre(data, state.settings);
+    case 'post-polish':
+      return processPostPolish(data, state.settings);
+    default:
+      return processFast(data, state.settings);
+  }
+}
+
+async function runWorker(task, imageData, workerMode) {
+  updateProgress(25, 'Mempertajam detail…');
+  await new Promise((r) => setTimeout(r, 0));
+  return processOnMainThread(imageData, workerMode);
 }
 
 async function loadUpscaler(scale) {
@@ -363,6 +364,7 @@ async function processAndRender() {
     }
 
     state.exportImageData = result;
+    validateImageData(result);
     els.afterCanvas.width = result.width;
     els.afterCanvas.height = result.height;
     putImageData(els.afterCanvas, result);
@@ -661,7 +663,6 @@ function bindElements() {
 
 export function initApp() {
   bindElements();
-  worker = new Worker('./processor.worker.js', { type: 'module' });
 
   initUpload();
   initControls();
