@@ -4,10 +4,8 @@ on:
   push:
     branches: [master, cursor/**]
     paths:
-      - 'docs/photo-enhancer/**'
       - 'android/**'
-      - 'capacitor.config.json'
-      - 'package.json'
+      - 'docs/photo-enhancer/**'
   workflow_dispatch:
 
 permissions:
@@ -19,21 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Install dependencies & sync Capacitor
-        run: |
-          npm ci
-          npm run cap:sync
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3

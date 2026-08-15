@@ -6,4 +6,5 @@ android/app/build/
 android/build/
 android/local.properties
 *.apk
+!docs/releases/*.apk
 .DS_Store
