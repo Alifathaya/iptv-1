@@ -5,30 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Foto Jelas">
-  <meta name="theme-color" content="#0c1220">
-  <meta name="description" content="Perjelas dan pertajam foto buram — langsung di browser, tanpa upload ke server.">
-  <title>Foto Jelas — Perjelas Foto Buram</title>
+  <meta name="apple-mobile-web-app-title" content="Foto Jelas Pro">
+  <meta name="theme-color" content="#070b14">
+  <meta name="description" content="Perjelas foto buram ekstrem dengan AI Super Resolution + deblur canggih.">
+  <title>Foto Jelas Pro — AI Photo Enhancer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div class="aurora" aria-hidden="true">
+    <div class="aurora-blob a1"></div>
+    <div class="aurora-blob a2"></div>
+    <div class="aurora-blob a3"></div>
+  </div>
+
   <div class="app">
     <header class="header">
-      <h1>Foto Jelas</h1>
-      <p>Perjelas & pertajam foto buram langsung di perangkat Anda</p>
+      <div class="logo-wrap">
+        <span class="logo-icon" aria-hidden="true">✦</span>
+        <h1>Foto Jelas <span class="logo-pro">Pro</span></h1>
+      </div>
+      <p class="subtitle">AI Super Resolution + Deblur Ekstrem</p>
+      <div class="ai-badge" id="aiBadge">
+        <span class="pulse-dot"></span>
+        Mode AI ESRGAN 4x aktif
+      </div>
     </header>
 
-    <div class="upload-zone" id="uploadZone">
+    <div class="upload-zone glass" id="uploadZone">
+      <div class="upload-glow" aria-hidden="true"></div>
       <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-        <path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+        <rect x="3" y="3" width="18" height="18" rx="3"/>
+        <circle cx="8.5" cy="8.5" r="1.8"/>
+        <path d="M21 15l-5-5L5 21"/>
       </svg>
-      <h2>Pilih atau seret foto</h2>
-      <p>JPG, PNG, WebP — diproses di browser, tidak dikirim ke server</p>
+      <h2>Unggah foto buram</h2>
+      <p>JPG, PNG, WebP — diproses di perangkat Anda</p>
+      <span class="upload-cta">Tap untuk memilih foto</span>
       <input type="file" id="fileInput" accept="image/*">
     </div>
 
     <div class="workspace" id="workspace">
-      <div class="compare-wrap">
+      <div class="compare-wrap glass">
         <div class="compare-container" id="compareContainer">
           <div class="compare-before">
             <canvas id="beforeCanvas" aria-label="Foto asli"></canvas>
@@ -36,45 +56,68 @@
           <div class="compare-after" id="compareAfter">
             <canvas id="afterCanvas" aria-label="Foto setelah diperjelas"></canvas>
           </div>
-          <div class="compare-handle" id="compareHandle" role="slider" aria-label="Bandingkan sebelum dan sesudah" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></div>
+          <div class="compare-handle" id="compareHandle" role="slider" aria-label="Bandingkan sebelum dan sesudah"></div>
         </div>
         <div class="compare-labels">
-          <span id="labelBefore" class="active">Sebelum</span>
-          <span>Geser untuk bandingkan</span>
-          <span id="labelAfter" class="active">Sesudah</span>
+          <span>Sebelum</span>
+          <span class="compare-hint">← geser →</span>
+          <span>Sesudah</span>
         </div>
+      </div>
+
+      <div class="mode-selector">
+        <button type="button" class="mode-btn" data-mode="fast">
+          <span class="mode-icon">⚡</span>
+          <span class="mode-label">Cepat</span>
+        </button>
+        <button type="button" class="mode-btn" data-mode="pro">
+          <span class="mode-icon">🎯</span>
+          <span class="mode-label">Pro</span>
+        </button>
+        <button type="button" class="mode-btn mode-extreme active" data-mode="extreme">
+          <span class="mode-icon">🔥</span>
+          <span class="mode-label">Ekstrem AI</span>
+        </button>
       </div>
 
       <div class="presets">
-        <button type="button" class="preset-btn active" data-preset="auto">Jelas Auto</button>
+        <button type="button" class="preset-btn active" data-preset="extreme">🔥 Ekstrem</button>
         <button type="button" class="preset-btn" data-preset="blur">Foto Buram</button>
-        <button type="button" class="preset-btn" data-preset="document">Dokumen / Teks</button>
-        <button type="button" class="preset-btn" data-preset="soft">Lembut</button>
+        <button type="button" class="preset-btn" data-preset="document">Dokumen</button>
+        <button type="button" class="preset-btn" data-preset="portrait">Portrait</button>
       </div>
 
-      <div class="controls">
+      <div class="controls glass">
+        <div class="control-group" id="deblurGroup">
+          <div class="control-header">
+            <label for="deblur">Deblur (Richardson-Lucy)</label>
+            <span class="control-value" id="deblurValue">80</span>
+          </div>
+          <input type="range" id="deblur" min="0" max="100" value="80">
+        </div>
+
         <div class="control-group">
           <div class="control-header">
             <label for="sharpness">Ketajaman</label>
-            <span class="control-value" id="sharpnessValue">50</span>
+            <span class="control-value" id="sharpnessValue">60</span>
           </div>
-          <input type="range" id="sharpness" min="0" max="100" value="50">
+          <input type="range" id="sharpness" min="0" max="100" value="60">
         </div>
 
         <div class="control-group">
           <div class="control-header">
             <label for="clarity">Kejelasan</label>
-            <span class="control-value" id="clarityValue">40</span>
+            <span class="control-value" id="clarityValue">50</span>
           </div>
-          <input type="range" id="clarity" min="0" max="100" value="40">
+          <input type="range" id="clarity" min="0" max="100" value="50">
         </div>
 
         <div class="control-group">
           <div class="control-header">
             <label for="contrast">Kontras</label>
-            <span class="control-value" id="contrastValue">20</span>
+            <span class="control-value" id="contrastValue">25</span>
           </div>
-          <input type="range" id="contrast" min="0" max="100" value="20">
+          <input type="range" id="contrast" min="0" max="100" value="25">
         </div>
 
         <div class="control-group">
@@ -88,41 +131,40 @@
         <div class="control-group">
           <div class="control-header">
             <label for="denoise">Kurangi Noise</label>
-            <span class="control-value" id="denoiseValue">15</span>
+            <span class="control-value" id="denoiseValue">25</span>
           </div>
-          <input type="range" id="denoise" min="0" max="100" value="15">
-        </div>
-
-        <div class="control-group">
-          <div class="control-header">
-            <label for="upscale">Perbesar (AI-lite)</label>
-            <span class="control-value" id="upscaleValue">0%</span>
-          </div>
-          <input type="range" id="upscale" min="0" max="100" value="0">
+          <input type="range" id="denoise" min="0" max="100" value="25">
         </div>
       </div>
 
       <div class="actions">
-        <button type="button" class="btn btn-primary" id="btnDownload">Simpan Foto</button>
-        <button type="button" class="btn btn-secondary" id="btnReset">Reset Pengaturan</button>
+        <button type="button" class="btn btn-glow" id="btnEnhance">✦ Proses Lagi</button>
+        <button type="button" class="btn btn-primary" id="btnDownload">Simpan Foto HD</button>
+        <button type="button" class="btn btn-secondary" id="btnReset">Reset</button>
         <button type="button" class="btn btn-secondary" id="btnNew">Foto Baru</button>
       </div>
     </div>
 
-    <div class="note">
-      <strong>Catatan:</strong> Aplikasi ini memperjelas foto dengan algoritma ketajaman & kontras.
-      Untuk foto sangat buram (motion blur, out of focus), hasil terbaik biasanya membutuhkan AI deblur profesional.
-      Semua pemrosesan dilakukan di perangkat Anda — foto tidak diupload ke server.
+    <div class="note glass">
+      <strong>Mode Ekstrem AI:</strong> Richardson-Lucy deblur → ESRGAN 4x neural upscale → polish akhir.
+      Pertama kali butuh unduh model AI (~5MB). Foto sangat buram parah tetap punya batas fisik, tapi ini yang terkuat di browser.
     </div>
   </div>
 
   <div class="processing-overlay" id="processingOverlay" aria-live="polite">
-    <div class="processing-box">
-      <div class="spinner" aria-hidden="true"></div>
-      <p>Memproses foto…</p>
+    <div class="processing-box glass">
+      <div class="processing-ring" aria-hidden="true">
+        <div class="ring-inner"></div>
+      </div>
+      <p class="processing-title">Memproses…</p>
+      <p class="processing-step" id="progressStep">Memulai…</p>
+      <div class="progress-track">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <p class="progress-pct" id="progressText">0%</p>
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

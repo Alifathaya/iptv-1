@@ -1,25 +1,29 @@
 /**
- * Photo Clarify — client-side image enhancement
- * Uses unsharp mask, clarity, contrast, and optional upscale.
+ * Foto Jelas Pro — AI-enhanced photo sharpening & deblur
  */
 
-const MAX_DIMENSION = 2048;
+import { fitMaxDimension, scaleImageData } from './filters.js';
+
+const AI_INPUT_MAX = 480;
+const UPSCALER_URL = 'https://esm.sh/upscaler@1.0.0-beta.19';
+const ESRGAN_X4_URL = 'https://esm.sh/@upscalerjs/esrgan-thick@1.0.0-beta.14/x4';
 
 const state = {
   originalImage: null,
-  originalWidth: 0,
-  originalHeight: 0,
+  mode: 'extreme',
   settings: {
-    sharpness: 50,
-    clarity: 40,
-    contrast: 20,
+    sharpness: 60,
+    clarity: 50,
+    contrast: 25,
     brightness: 0,
-    denoise: 15,
+    denoise: 25,
+    deblur: 80,
     upscale: 0,
   },
-  preset: 'auto',
+  preset: 'extreme',
   comparePosition: 50,
   processing: false,
+  aiReady: false,
 };
 
 const els = {
@@ -31,8 +35,7 @@ const els = {
   compareContainer: document.getElementById('compareContainer'),
   compareAfter: document.getElementById('compareAfter'),
   compareHandle: document.getElementById('compareHandle'),
-  labelBefore: document.getElementById('labelBefore'),
-  labelAfter: document.getElementById('labelAfter'),
+  modeBtns: document.querySelectorAll('.mode-btn'),
   presetBtns: document.querySelectorAll('.preset-btn'),
   sliders: {
     sharpness: document.getElementById('sharpness'),
@@ -40,7 +43,7 @@ const els = {
     contrast: document.getElementById('contrast'),
     brightness: document.getElementById('brightness'),
     denoise: document.getElementById('denoise'),
-    upscale: document.getElementById('upscale'),
+    deblur: document.getElementById('deblur'),
   },
   values: {
     sharpness: document.getElementById('sharpnessValue'),
@@ -48,20 +51,31 @@ const els = {
     contrast: document.getElementById('contrastValue'),
     brightness: document.getElementById('brightnessValue'),
     denoise: document.getElementById('denoiseValue'),
-    upscale: document.getElementById('upscaleValue'),
+    deblur: document.getElementById('deblurValue'),
   },
+  deblurGroup: document.getElementById('deblurGroup'),
   btnDownload: document.getElementById('btnDownload'),
   btnReset: document.getElementById('btnReset'),
   btnNew: document.getElementById('btnNew'),
+  btnEnhance: document.getElementById('btnEnhance'),
   processingOverlay: document.getElementById('processingOverlay'),
+  progressBar: document.getElementById('progressBar'),
+  progressText: document.getElementById('progressText'),
+  progressStep: document.getElementById('progressStep'),
+  aiBadge: document.getElementById('aiBadge'),
 };
 
 const PRESETS = {
-  auto: { sharpness: 50, clarity: 40, contrast: 20, brightness: 0, denoise: 15, upscale: 0 },
-  blur: { sharpness: 75, clarity: 55, contrast: 25, brightness: 5, denoise: 25, upscale: 50 },
-  document: { sharpness: 85, clarity: 30, contrast: 45, brightness: 10, denoise: 10, upscale: 0 },
-  soft: { sharpness: 30, clarity: 25, contrast: 10, brightness: 0, denoise: 30, upscale: 0 },
+  extreme: { mode: 'extreme', sharpness: 70, clarity: 55, contrast: 30, brightness: 5, denoise: 30, deblur: 85, upscale: 0 },
+  blur: { mode: 'pro', sharpness: 75, clarity: 55, contrast: 25, brightness: 5, denoise: 30, deblur: 70, upscale: 0 },
+  document: { mode: 'pro', sharpness: 90, clarity: 35, contrast: 50, brightness: 10, denoise: 15, deblur: 60, upscale: 0 },
+  portrait: { mode: 'pro', sharpness: 45, clarity: 40, contrast: 15, brightness: 5, denoise: 40, deblur: 40, upscale: 0 },
+  auto: { mode: 'fast', sharpness: 50, clarity: 40, contrast: 20, brightness: 0, denoise: 15, deblur: 0, upscale: 0 },
 };
+
+let worker = new Worker('./processor.worker.js', { type: 'module' });
+let upscalerInstance = null;
+let processTimeout = null;
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -69,13 +83,10 @@ function clamp(v, min, max) {
 
 function scaleDimensions(width, height) {
   const maxSide = Math.max(width, height);
-  if (maxSide <= MAX_DIMENSION) return { width, height };
-
-  const scale = MAX_DIMENSION / maxSide;
-  return {
-    width: Math.round(width * scale),
-    height: Math.round(height * scale),
-  };
+  const maxDim = 2048;
+  if (maxSide <= maxDim) return { width, height };
+  const scale = maxDim / maxSide;
+  return { width: Math.round(width * scale), height: Math.round(height * scale) };
 }
 
 function loadImageFromFile(file) {
@@ -96,7 +107,7 @@ function drawImageToCanvas(img, canvas, width, height) {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = '#0a0a0a';
+  ctx.fillStyle = '#050508';
   ctx.fillRect(0, 0, width, height);
   ctx.drawImage(img, 0, 0, width, height);
 }
@@ -111,211 +122,47 @@ function putImageData(canvas, imageData) {
   ctx.putImageData(imageData, 0, 0);
 }
 
-function cloneImageData(imageData) {
-  return new ImageData(
-    new Uint8ClampedArray(imageData.data),
-    imageData.width,
-    imageData.height
-  );
+function imageDataToCanvas(imageData) {
+  const canvas = document.createElement('canvas');
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  putImageData(canvas, imageData);
+  return canvas;
 }
 
-/** Separable box blur — fast approximation for unsharp mask */
-function boxBlur(imageData, radius) {
-  if (radius <= 0) return cloneImageData(imageData);
-
-  const { width, height, data } = imageData;
-  const out = new Uint8ClampedArray(data.length);
-  const tmp = new Float32Array(data.length);
-  const r = Math.max(1, Math.round(radius));
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let sumR = 0, sumG = 0, sumB = 0, count = 0;
-      for (let dx = -r; dx <= r; dx++) {
-        const nx = clamp(x + dx, 0, width - 1);
-        const i = (y * width + nx) * 4;
-        sumR += data[i];
-        sumG += data[i + 1];
-        sumB += data[i + 2];
-        count++;
-      }
-      const o = (y * width + x) * 4;
-      tmp[o] = sumR / count;
-      tmp[o + 1] = sumG / count;
-      tmp[o + 2] = sumB / count;
-      tmp[o + 3] = data[o + 3];
-    }
-  }
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let sumR = 0, sumG = 0, sumB = 0, count = 0;
-      for (let dy = -r; dy <= r; dy++) {
-        const ny = clamp(y + dy, 0, height - 1);
-        const i = (ny * width + x) * 4;
-        sumR += tmp[i];
-        sumG += tmp[i + 1];
-        sumB += tmp[i + 2];
-        count++;
-      }
-      const o = (y * width + x) * 4;
-      out[o] = sumR / count;
-      out[o + 1] = sumG / count;
-      out[o + 2] = sumB / count;
-      out[o + 3] = data[o + 3];
-    }
-  }
-
-  return new ImageData(out, width, height);
+function canvasToImage(canvas) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = canvas.toDataURL('image/png');
+  });
 }
 
-function applyBrightnessContrast(imageData, brightness, contrast) {
-  const data = imageData.data;
-  const b = brightness * 2.55;
-  const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-
-  for (let i = 0; i < data.length; i += 4) {
-    let r = data[i] + b;
-    let g = data[i + 1] + b;
-    let bl = data[i + 2] + b;
-
-    r = factor * (r - 128) + 128;
-    g = factor * (g - 128) + 128;
-    bl = factor * (bl - 128) + 128;
-
-    data[i] = clamp(Math.round(r), 0, 255);
-    data[i + 1] = clamp(Math.round(g), 0, 255);
-    data[i + 2] = clamp(Math.round(bl), 0, 255);
-  }
-
-  return imageData;
+function imageElementToImageData(img) {
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth || img.width;
+  canvas.height = img.naturalHeight || img.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-function applyUnsharpMask(imageData, amount, radius) {
-  if (amount <= 0) return imageData;
-
-  const blurred = boxBlur(imageData, radius);
-  const src = imageData.data;
-  const blur = blurred.data;
-  const strength = amount / 50;
-
-  for (let i = 0; i < src.length; i += 4) {
-    const dr = src[i] - blur[i];
-    const dg = src[i + 1] - blur[i + 1];
-    const db = src[i + 2] - blur[i + 2];
-
-    src[i] = clamp(Math.round(src[i] + dr * strength), 0, 255);
-    src[i + 1] = clamp(Math.round(src[i + 1] + dg * strength), 0, 255);
-    src[i + 2] = clamp(Math.round(src[i + 2] + db * strength), 0, 255);
-  }
-
-  return imageData;
-}
-
-function applyClarity(imageData, amount) {
-  if (amount <= 0) return imageData;
-
-  const blurred = boxBlur(imageData, 8);
-  const src = imageData.data;
-  const blur = blurred.data;
-  const strength = amount / 100;
-
-  for (let i = 0; i < src.length; i += 4) {
-    const lum = 0.299 * src[i] + 0.587 * src[i + 1] + 0.114 * src[i + 2];
-    const lumBlur = 0.299 * blur[i] + 0.587 * blur[i + 1] + 0.114 * blur[i + 2];
-    const midWeight = 1 - Math.abs(lum - 128) / 128;
-    const delta = (lum - lumBlur) * strength * midWeight * 2;
-
-    src[i] = clamp(Math.round(src[i] + delta), 0, 255);
-    src[i + 1] = clamp(Math.round(src[i + 1] + delta), 0, 255);
-    src[i + 2] = clamp(Math.round(src[i + 2] + delta), 0, 255);
-  }
-
-  return imageData;
-}
-
-function applyDenoise(imageData, amount) {
-  if (amount <= 0) return imageData;
-
-  const blurred = boxBlur(imageData, 2);
-  const src = imageData.data;
-  const blur = blurred.data;
-  const threshold = 8 + amount * 0.3;
-  const blend = amount / 100;
-
-  for (let i = 0; i < src.length; i += 4) {
-    const dr = src[i] - blur[i];
-    const dg = src[i + 1] - blur[i + 1];
-    const db = src[i + 2] - blur[i + 2];
-    const diff = Math.sqrt(dr * dr + dg * dg + db * db);
-
-    if (diff < threshold) {
-      src[i] = Math.round(src[i] * (1 - blend) + blur[i] * blend);
-      src[i + 1] = Math.round(src[i + 1] * (1 - blend) + blur[i + 1] * blend);
-      src[i + 2] = Math.round(src[i + 2] * (1 - blend) + blur[i + 2] * blend);
-    }
-  }
-
-  return imageData;
-}
-
-function upscaleImageData(imageData, percent) {
-  if (percent <= 0) return imageData;
-
-  const scale = 1 + percent / 100;
-  const newW = Math.round(imageData.width * scale);
-  const newH = Math.round(imageData.height * scale);
-
-  const srcCanvas = document.createElement('canvas');
-  srcCanvas.width = imageData.width;
-  srcCanvas.height = imageData.height;
-  putImageData(srcCanvas, imageData);
-
-  const destCanvas = document.createElement('canvas');
-  destCanvas.width = newW;
-  destCanvas.height = newH;
-  const ctx = destCanvas.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(srcCanvas, 0, 0, newW, newH);
-
-  return getImageData(destCanvas);
-}
-
-function processImageData(sourceData, settings) {
-  let data = cloneImageData(sourceData);
-
-  const contrastVal = settings.contrast * 1.2;
-  const brightnessVal = settings.brightness;
-
-  if (brightnessVal !== 0 || contrastVal !== 0) {
-    data = applyBrightnessContrast(data, brightnessVal, contrastVal);
-  }
-
-  if (settings.denoise > 0) {
-    data = applyDenoise(data, settings.denoise);
-  }
-
-  if (settings.clarity > 0) {
-    data = applyClarity(data, settings.clarity);
-  }
-
-  const radius = 1 + settings.sharpness / 25;
-  if (settings.sharpness > 0) {
-    data = applyUnsharpMask(data, settings.sharpness, radius);
-  }
-
-  if (settings.upscale > 0) {
-    data = upscaleImageData(data, settings.upscale);
-  }
-
-  return data;
+function updateProgress(pct, message) {
+  const p = clamp(pct, 0, 100);
+  els.progressBar.style.width = `${p}%`;
+  els.progressText.textContent = `${Math.round(p)}%`;
+  if (message) els.progressStep.textContent = message;
 }
 
 function setProcessing(active) {
   state.processing = active;
   els.processingOverlay.classList.toggle('visible', active);
   els.btnDownload.disabled = active;
+  els.btnEnhance.disabled = active;
+  if (!active) {
+    updateProgress(0, '');
+  }
 }
 
 function updateSliderUI() {
@@ -328,8 +175,16 @@ function updateSliderUI() {
 
 function formatSliderValue(key, val) {
   if (key === 'brightness') return val > 0 ? `+${val}` : String(val);
-  if (key === 'upscale') return `${val}%`;
   return String(val);
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  els.modeBtns.forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  els.deblurGroup.style.display = mode === 'fast' ? 'none' : 'block';
+  els.aiBadge.classList.toggle('visible', mode === 'extreme');
 }
 
 function applyPreset(name) {
@@ -337,7 +192,16 @@ function applyPreset(name) {
   const preset = PRESETS[name];
   if (!preset) return;
 
-  Object.assign(state.settings, preset);
+  setMode(preset.mode);
+  Object.assign(state.settings, {
+    sharpness: preset.sharpness,
+    clarity: preset.clarity,
+    contrast: preset.contrast,
+    brightness: preset.brightness,
+    denoise: preset.denoise,
+    deblur: preset.deblur,
+    upscale: preset.upscale ?? 0,
+  });
   updateSliderUI();
 
   els.presetBtns.forEach((btn) => {
@@ -351,32 +215,124 @@ function updateComparePosition(percent) {
   els.compareHandle.style.left = `${state.comparePosition}%`;
 }
 
+function runWorker(task, imageData, workerMode) {
+  return new Promise((resolve, reject) => {
+    const clone = new ImageData(
+      new Uint8ClampedArray(imageData.data),
+      imageData.width,
+      imageData.height
+    );
+
+    const handler = (e) => {
+      const msg = e.data;
+      if (msg.type === 'progress') {
+        updateProgress(msg.pct, msg.message);
+      } else if (msg.type === 'done' && msg.mode === workerMode) {
+        worker.removeEventListener('message', handler);
+        resolve(msg.imageData);
+      } else if (msg.type === 'error') {
+        worker.removeEventListener('message', handler);
+        reject(new Error(msg.message));
+      }
+    };
+
+    worker.addEventListener('message', handler);
+    worker.postMessage(
+      { task, imageData: clone, settings: state.settings, mode: workerMode },
+      [clone.data.buffer]
+    );
+  });
+}
+
+async function loadUpscaler() {
+  if (upscalerInstance) return upscalerInstance;
+
+  updateProgress(5, 'Mengunduh model AI ESRGAN…');
+
+  const { default: Upscaler } = await import(UPSCALER_URL);
+  const { default: x4 } = await import(ESRGAN_X4_URL);
+
+  upscalerInstance = new Upscaler({
+    model: x4,
+  });
+
+  state.aiReady = true;
+  return upscalerInstance;
+}
+
+async function aiUpscale4x(imageData) {
+  const upscaler = await loadUpscaler();
+  const work = fitMaxDimension(imageData, AI_INPUT_MAX);
+  const canvas = imageDataToCanvas(work);
+  const img = await canvasToImage(canvas);
+
+  updateProgress(40, 'Neural network membangun detail 4x…');
+
+  const upscaled = await upscaler.upscale(img, {
+    progress: (pct) => {
+      const normalized = pct <= 1 ? pct : pct / 100;
+      updateProgress(40 + normalized * 45, 'AI Super Resolution 4x…');
+    },
+  });
+
+  if (upscaled instanceof HTMLImageElement) {
+    return imageElementToImageData(upscaled);
+  }
+
+  if (upscaled instanceof HTMLCanvasElement) {
+    return getImageData(upscaled);
+  }
+
+  throw new Error('Format hasil AI tidak dikenali');
+}
+
 async function processAndRender() {
   if (!state.originalImage || state.processing) return;
 
   setProcessing(true);
-
-  await new Promise((r) => setTimeout(r, 10));
+  updateProgress(2, 'Memulai…');
 
   try {
     const sourceData = getImageData(els.beforeCanvas);
-    const result = processImageData(sourceData, state.settings);
+    let result;
+
+    if (state.mode === 'fast') {
+      result = await runWorker('process', sourceData, 'fast');
+    } else if (state.mode === 'pro') {
+      result = await runWorker('process', sourceData, 'pro');
+    } else if (state.mode === 'extreme') {
+      updateProgress(8, 'Deblur ekstrem (Richardson-Lucy)…');
+      const prepped = await runWorker('process', sourceData, 'pre-extreme');
+
+      try {
+        result = await aiUpscale4x(prepped);
+      } catch (aiErr) {
+        console.warn('AI upscale failed, using algorithmic fallback:', aiErr);
+        updateProgress(50, 'AI gagal — upscale algoritmik 2x…');
+        const fallback = scaleImageData(prepped, prepped.width * 2, prepped.height * 2);
+        result = await runWorker('process', fallback, 'post-polish');
+      }
+
+      updateProgress(88, 'Polish akhir…');
+      result = await runWorker('process', result, 'post-polish');
+    }
 
     els.afterCanvas.width = result.width;
     els.afterCanvas.height = result.height;
     putImageData(els.afterCanvas, result);
-
     els.compareContainer.style.aspectRatio = `${result.width} / ${result.height}`;
+    updateProgress(100, 'Selesai!');
+  } catch (err) {
+    console.error(err);
+    alert('Gagal memproses foto. Coba foto lebih kecil atau mode Cepat.');
   } finally {
-    setProcessing(false);
+    setTimeout(() => setProcessing(false), 400);
   }
 }
 
-let processTimeout = null;
-
 function scheduleProcess() {
   clearTimeout(processTimeout);
-  processTimeout = setTimeout(processAndRender, 120);
+  processTimeout = setTimeout(processAndRender, 200);
 }
 
 async function handleFile(file) {
@@ -386,14 +342,13 @@ async function handleFile(file) {
   }
 
   setProcessing(true);
+  updateProgress(0, 'Membuka foto…');
 
   try {
     const img = await loadImageFromFile(file);
     const dims = scaleDimensions(img.naturalWidth, img.naturalHeight);
 
     state.originalImage = img;
-    state.originalWidth = dims.width;
-    state.originalHeight = dims.height;
 
     drawImageToCanvas(img, els.beforeCanvas, dims.width, dims.height);
     els.afterCanvas.width = dims.width;
@@ -403,7 +358,7 @@ async function handleFile(file) {
     els.workspace.classList.add('active');
     els.compareContainer.style.aspectRatio = `${dims.width} / ${dims.height}`;
 
-    applyPreset('auto');
+    applyPreset('extreme');
     updateComparePosition(50);
     await processAndRender();
   } catch {
@@ -416,7 +371,7 @@ async function handleFile(file) {
 function downloadResult() {
   const link = document.createElement('a');
   const timestamp = new Date().toISOString().slice(0, 10);
-  link.download = `foto-jelas-${timestamp}.png`;
+  link.download = `foto-jelas-pro-${timestamp}.png`;
   link.href = els.afterCanvas.toDataURL('image/png');
   link.click();
 }
@@ -439,12 +394,10 @@ function initCompareSlider() {
   const onMove = (clientX) => {
     if (!dragging) return;
     const rect = els.compareContainer.getBoundingClientRect();
-    const percent = ((clientX - rect.left) / rect.width) * 100;
-    updateComparePosition(percent);
+    updateComparePosition(((clientX - rect.left) / rect.width) * 100);
   };
 
   const start = () => { dragging = true; };
-
   const end = () => { dragging = false; };
 
   els.compareHandle.addEventListener('mousedown', start);
@@ -452,7 +405,6 @@ function initCompareSlider() {
     dragging = true;
     onMove(e.clientX);
   });
-
   document.addEventListener('mousemove', (e) => onMove(e.clientX));
   document.addEventListener('mouseup', end);
 
@@ -460,22 +412,18 @@ function initCompareSlider() {
     e.preventDefault();
     dragging = true;
   }, { passive: false });
-
   els.compareContainer.addEventListener('touchstart', (e) => {
     dragging = true;
     onMove(e.touches[0].clientX);
   });
-
   document.addEventListener('touchmove', (e) => {
     if (dragging) onMove(e.touches[0].clientX);
   }, { passive: true });
-
   document.addEventListener('touchend', end);
 }
 
 function initUpload() {
   els.uploadZone.addEventListener('click', () => els.fileInput.click());
-
   els.fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) handleFile(file);
@@ -485,11 +433,9 @@ function initUpload() {
     e.preventDefault();
     els.uploadZone.classList.add('dragover');
   });
-
   els.uploadZone.addEventListener('dragleave', () => {
     els.uploadZone.classList.remove('dragover');
   });
-
   els.uploadZone.addEventListener('drop', (e) => {
     e.preventDefault();
     els.uploadZone.classList.remove('dragover');
@@ -505,7 +451,7 @@ function initControls() {
       els.values[key].textContent = formatSliderValue(key, state.settings[key]);
       state.preset = 'custom';
       els.presetBtns.forEach((btn) => btn.classList.remove('active'));
-      scheduleProcess();
+      if (state.mode !== 'extreme') scheduleProcess();
     });
   });
 
@@ -516,12 +462,30 @@ function initControls() {
     });
   });
 
+  els.modeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setMode(btn.dataset.mode);
+      state.preset = 'custom';
+      els.presetBtns.forEach((b) => b.classList.remove('active'));
+      scheduleProcess();
+    });
+  });
+
   els.btnDownload.addEventListener('click', downloadResult);
   els.btnReset.addEventListener('click', resetSettings);
   els.btnNew.addEventListener('click', resetApp);
+  els.btnEnhance.addEventListener('click', () => processAndRender());
 }
 
 initUpload();
 initControls();
 initCompareSlider();
+setMode('extreme');
 updateSliderUI();
+
+// Pre-warm AI model hint on idle
+if ('requestIdleCallback' in window) {
+  requestIdleCallback(() => {
+    loadUpscaler().catch(() => {});
+  }, { timeout: 8000 });
+}
