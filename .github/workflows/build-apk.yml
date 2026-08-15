@@ -49,8 +49,7 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk docs/releases/FotoJelasPro.apk
           ls -lh docs/releases/FotoJelasPro.apk
 
-      - name: Commit APK (master only)
-        if: github.ref == 'refs/heads/master'
+      - name: Commit APK
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
