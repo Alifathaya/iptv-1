@@ -44,13 +44,14 @@ let upscalerCache = {};
 let processTimeout = null;
 
 const PRESETS = {
-  cloud: { mode: 'cloud-8', sharpness: 75, clarity: 55, contrast: 30, brightness: 5, denoise: 30, deblur: 90, upscale: 0 },
-  ultra: { mode: 'ultra', sharpness: 80, clarity: 60, contrast: 35, brightness: 5, denoise: 35, deblur: 95, upscale: 0 },
-  extreme: { mode: 'extreme', sharpness: 70, clarity: 55, contrast: 30, brightness: 5, denoise: 30, deblur: 85, upscale: 0 },
-  blur: { mode: 'pro', sharpness: 75, clarity: 55, contrast: 25, brightness: 5, denoise: 30, deblur: 70, upscale: 0 },
-  document: { mode: 'pro', sharpness: 90, clarity: 35, contrast: 50, brightness: 10, denoise: 15, deblur: 60, upscale: 0 },
-  portrait: { mode: 'pro', sharpness: 45, clarity: 40, contrast: 15, brightness: 5, denoise: 40, deblur: 40, upscale: 0 },
-  auto: { mode: 'fast', sharpness: 50, clarity: 40, contrast: 20, brightness: 0, denoise: 15, deblur: 0, upscale: 0 },
+  jelas: { mode: 'fast', sharpness: 70, clarity: 55, contrast: 40, brightness: 5, denoise: 0, deblur: 0, upscale: 0 },
+  cloud: { mode: 'cloud-8', sharpness: 70, clarity: 50, contrast: 35, brightness: 5, denoise: 15, deblur: 30, upscale: 0 },
+  ultra: { mode: 'ultra', sharpness: 75, clarity: 50, contrast: 35, brightness: 5, denoise: 20, deblur: 35, upscale: 0 },
+  extreme: { mode: 'extreme', sharpness: 70, clarity: 50, contrast: 30, brightness: 5, denoise: 20, deblur: 30, upscale: 0 },
+  blur: { mode: 'pro', sharpness: 75, clarity: 50, contrast: 30, brightness: 5, denoise: 25, deblur: 35, upscale: 0 },
+  document: { mode: 'pro', sharpness: 85, clarity: 40, contrast: 45, brightness: 10, denoise: 10, deblur: 25, upscale: 0 },
+  portrait: { mode: 'pro', sharpness: 50, clarity: 40, contrast: 20, brightness: 5, denoise: 30, deblur: 20, upscale: 0 },
+  auto: { mode: 'fast', sharpness: 65, clarity: 45, contrast: 35, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
 };
 
 function clamp(v, min, max) {
@@ -173,10 +174,12 @@ function setMode(mode) {
   els.deblurGroup.style.display = mode === 'fast' ? 'none' : 'block';
   els.cloudSettings.classList.toggle('visible', isCloudMode(mode));
 
-  const showBadge = isAiMode(mode) || isCloudMode(mode);
+  const showBadge = mode === 'fast' || isAiMode(mode) || isCloudMode(mode);
   els.aiBadge.classList.toggle('visible', showBadge);
 
-  if (isCloudMode(mode)) {
+  if (mode === 'fast') {
+    els.aiBadge.textContent = '✨ Mode Jelas — ketajaman & kontras';
+  } else if (isCloudMode(mode)) {
     els.aiBadge.textContent = mode === 'cloud-8'
       ? '☁️ Cloud GPU — Real-ESRGAN 8x'
       : '☁️ Cloud GPU — Real-ESRGAN 4x';
@@ -397,7 +400,7 @@ async function handleFile(file) {
     els.workspace.classList.add('active');
     els.compareContainer.style.aspectRatio = `${dims.width} / ${dims.height}`;
 
-    applyPreset(isNativeApp() ? 'ultra' : 'extreme');
+    applyPreset('jelas');
     updateComparePosition(50);
     await processAndRender();
   } catch {
@@ -653,7 +656,7 @@ export function initApp() {
   initUpload();
   initControls();
   initCompareSlider();
-  setMode('extreme');
+  setMode('fast');
   updateSliderUI();
 
   if (isNativeApp()) {

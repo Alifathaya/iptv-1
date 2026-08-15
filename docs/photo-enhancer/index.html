@@ -33,7 +33,7 @@
       <p class="subtitle">AI Super Resolution + Deblur Ekstrem</p>
       <div class="ai-badge" id="aiBadge">
         <span class="pulse-dot"></span>
-        Mode AI ESRGAN 4x aktif
+        Mode Jelas — ketajaman & kontras
       </div>
     </header>
 
@@ -69,7 +69,7 @@
       </div>
 
       <div class="mode-selector">
-        <button type="button" class="mode-btn" data-mode="fast">
+        <button type="button" class="mode-btn active" data-mode="fast">
           <span class="mode-icon">⚡</span>
           <span class="mode-label">Cepat</span>
         </button>
@@ -77,7 +77,7 @@
           <span class="mode-icon">🎯</span>
           <span class="mode-label">Pro</span>
         </button>
-        <button type="button" class="mode-btn mode-extreme active" data-mode="extreme">
+        <button type="button" class="mode-btn mode-extreme" data-mode="extreme">
           <span class="mode-icon">🔥</span>
           <span class="mode-label">AI 4x</span>
         </button>
@@ -117,29 +117,29 @@
       </div>
 
       <div class="presets">
-        <button type="button" class="preset-btn" data-preset="cloud">🚀 Cloud MAX</button>
-        <button type="button" class="preset-btn" data-preset="ultra">💎 Ultra</button>
-        <button type="button" class="preset-btn active" data-preset="extreme">🔥 Ekstrem</button>
+        <button type="button" class="preset-btn active" data-preset="jelas">✨ Jelas</button>
         <button type="button" class="preset-btn" data-preset="blur">Foto Buram</button>
+        <button type="button" class="preset-btn" data-preset="extreme">🔥 AI 4x</button>
+        <button type="button" class="preset-btn" data-preset="ultra">💎 Ultra</button>
+        <button type="button" class="preset-btn" data-preset="cloud">🚀 Cloud</button>
         <button type="button" class="preset-btn" data-preset="document">Dokumen</button>
-        <button type="button" class="preset-btn" data-preset="portrait">Portrait</button>
       </div>
 
       <div class="controls glass">
         <div class="control-group" id="deblurGroup">
           <div class="control-header">
             <label for="deblur">Deblur (Richardson-Lucy)</label>
-            <span class="control-value" id="deblurValue">80</span>
+            <span class="control-value" id="deblurValue">0</span>
           </div>
-          <input type="range" id="deblur" min="0" max="100" value="80">
+          <input type="range" id="deblur" min="0" max="100" value="0">
         </div>
 
         <div class="control-group">
           <div class="control-header">
             <label for="sharpness">Ketajaman</label>
-            <span class="control-value" id="sharpnessValue">60</span>
+            <span class="control-value" id="sharpnessValue">70</span>
           </div>
-          <input type="range" id="sharpness" min="0" max="100" value="60">
+          <input type="range" id="sharpness" min="0" max="100" value="70">
         </div>
 
         <div class="control-group">

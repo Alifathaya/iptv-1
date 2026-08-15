@@ -101,16 +101,9 @@ class GpuEnhancer:
         out = img.copy()
         s = max(0, min(100, strength))
 
-        if s >= 25:
-            out = cv2.fastNlMeansDenoisingColored(out, None, 5, 5, 7, 15)
-
-        blur = cv2.GaussianBlur(out, (0, 0), sigmaX=1.2 + s * 0.03)
-        amount = 0.4 + s * 0.012
+        blur = cv2.GaussianBlur(out, (0, 0), sigmaX=0.8 + s * 0.015)
+        amount = 0.25 + s * 0.006
         out = cv2.addWeighted(out, 1.0 + amount, blur, -amount, 0)
-
-        if s >= 50:
-            blur2 = cv2.GaussianBlur(out, (0, 0), sigmaX=2.5)
-            out = cv2.addWeighted(out, 1.15, blur2, -0.15, 0)
 
         return np.clip(out, 0, 255).astype(np.uint8)
 
