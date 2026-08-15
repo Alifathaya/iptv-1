@@ -1,30 +1,18 @@
-# Foto Jelas Pro — Android (Native)
+# Foto Jelas Pro — Android
 
-Satu aplikasi Android native (Kotlin + Jetpack Compose) — gabungan fitur web + Jelasin.
-
-## Fitur
-
-- **AI Presets:** Natural, Jelas, Portrait, Foto Buram, Dokumen, AI 4x/8x, GPU Cloud 4x/8x
-- **CameraX** + deteksi blur (peringatan goyang)
-- **Konvolusi 3×3** di coroutine background
-- **TensorFlow Lite** on-device + **Cloud Real-ESRGAN**
-- **Room** history + **before/after slider**
-- **MediaStore** → `Pictures/FotoJelasPro`
+APK Android memakai **dashboard web** (`docs/photo-enhancer/`) via Capacitor — UI aurora, glass, compare slider, semua mode AI.
 
 ## Build
 
 ```bash
-cd android
-./gradlew assembleDebug
+npm run build:android
 ```
 
-Atau dari root: `npm run build:android`
-
-APK: `app/build/outputs/apk/debug/app-debug.apk`
+APK: `android/app/build/outputs/apk/debug/app-debug.apk` → `docs/releases/FotoJelasPro.apk`
 
 Package: `com.fotojelas.pro`
 
-## Web vs Android
+## Catatan
 
-- **APK** = app native penuh (rekomendasikan untuk HP)
-- **docs/photo-enhancer/** = versi browser (GitHub Pages / preview)
+- Fitur pemrosesan: konvolusi 3×3 (Web Worker), Natural pipeline, Cloud GPU, AI 4x/8x
+- Web dan APK memakai dashboard yang sama
