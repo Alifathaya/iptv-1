@@ -170,8 +170,8 @@ export function scaleImageData(imageData, newW, newH) {
 
   const destCanvas = new OffscreenCanvas(newW, newH);
   const ctx = destCanvas.getContext('2d');
-  const upscaling = newW > imageData.width || newH > imageData.height;
-  ctx.imageSmoothingEnabled = !upscaling;
+  // FIX: smoothing harus selalu ON saat upscale, kalau OFF jadi blocky/makin jelek
+  ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(srcCanvas, 0, 0, newW, newH);
 
@@ -524,15 +524,15 @@ function writeChannel(imageData, channel, src) {
   }
 }
 
-/** Richardson-Lucy — only mild strength; high values cause muddy blur */
+/** Richardson-Lucy deblur — diperkuat agar foto buram benar-benar terkoreksi */
 export function applyRichardsonLucy(imageData, strength) {
   if (strength <= 0) return imageData;
 
-  const capped = Math.min(strength, 45);
+  const capped = Math.min(strength, 70);
   const { width, height } = imageData;
-  const sigma = 0.6 + capped * 0.03;
-  const ksize = clamp(Math.ceil(sigma * 4) | 1, 3, 9);
-  const iterations = Math.round(2 + capped * 0.08);
+  const sigma = 0.7 + capped * 0.035;
+  const ksize = clamp(Math.ceil(sigma * 4) | 1, 3, 11);
+  const iterations = Math.round(3 + capped * 0.12);
   const kernel = createGaussianKernel(ksize, sigma);
 
   const data = cloneImageData(imageData);
@@ -692,9 +692,9 @@ export async function processFastAsync(imageData, settings, onProgress) {
 export async function processProAsync(imageData, settings, onProgress) {
   let data = await processClarifyAsync(imageData, settings, onProgress);
 
-  if (settings.deblur > 40) {
+  if (settings.deblur >= 25) {
     if (onProgress) onProgress(90, 'Deblur detail (Richardson-Lucy)…');
-    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.4, 28));
+    data = applyRichardsonLucy(data, Math.min(20 + settings.deblur * 0.5, 55));
     data = applyFineDetailRecovery(data, settings.sharpness * 0.55);
     await yieldToMain();
   }
@@ -709,8 +709,8 @@ export function processFast(imageData, settings) {
 export function processPro(imageData, settings) {
   let data = processClarify(imageData, settings);
 
-  if (settings.deblur > 40) {
-    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.4, 28));
+  if (settings.deblur >= 25) {
+    data = applyRichardsonLucy(data, Math.min(20 + settings.deblur * 0.5, 55));
     data = applyFineDetailRecovery(data, settings.sharpness * 0.55);
   }
 
@@ -721,8 +721,8 @@ export function processExtremePre(imageData, settings) {
   let data = fitMaxDimension(imageData, 1280);
   data = applyNaturalSharpen(data, Math.min(settings.sharpness, 38));
 
-  if (settings.deblur > 65) {
-    data = applyRichardsonLucy(data, Math.min(settings.deblur * 0.3, 20));
+  if (settings.deblur >= 40) {
+    data = applyRichardsonLucy(data, Math.min(15 + settings.deblur * 0.4, 40));
   }
 
   return data;
