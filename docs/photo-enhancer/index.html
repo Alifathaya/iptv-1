@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Foto Jelas Pro">
+  <meta name="theme-color" content="#070b14">
+  <meta name="description" content="Perjelas foto buram ekstrem dengan AI Super Resolution + deblur canggih.">
+  <title>Foto Jelas Pro — AI Photo Enhancer</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true">
+    <div class="aurora-blob a1"></div>
+    <div class="aurora-blob a2"></div>
+    <div class="aurora-blob a3"></div>
+  </div>
+
+  <div class="app">
+    <header class="header">
+      <div class="logo-wrap">
+        <span class="logo-icon" aria-hidden="true">✦</span>
+        <h1>Foto Jelas <span class="logo-pro">Pro</span></h1>
+      </div>
+      <p class="subtitle">AI Super Resolution + Deblur Ekstrem</p>
+      <div class="ai-badge" id="aiBadge">
+        <span class="pulse-dot"></span>
+        Mode Jelas — ketajaman & kontras
+      </div>
+    </header>
+
+    <div class="upload-zone glass" id="uploadZone">
+      <div class="upload-glow" aria-hidden="true"></div>
+      <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="3"/>
+        <circle cx="8.5" cy="8.5" r="1.8"/>
+        <path d="M21 15l-5-5L5 21"/>
+      </svg>
+      <h2>Unggah foto buram</h2>
+      <p>JPG, PNG, WebP — diproses di perangkat Anda</p>
+      <span class="upload-cta">Tap untuk memilih foto</span>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <div class="workspace" id="workspace">
+      <div class="compare-wrap glass">
+        <div class="compare-container" id="compareContainer">
+          <div class="compare-before">
+            <canvas id="beforeCanvas" aria-label="Foto asli"></canvas>
+          </div>
+          <div class="compare-after" id="compareAfter">
+            <canvas id="afterCanvas" aria-label="Foto setelah diperjelas"></canvas>
+          </div>
+          <div class="compare-handle" id="compareHandle" role="slider" aria-label="Bandingkan sebelum dan sesudah"></div>
+        </div>
+        <div class="compare-labels">
+          <span>Sebelum</span>
+          <span class="compare-hint">← geser →</span>
+          <span>Sesudah</span>
+        </div>
+      </div>
+
+      <div class="mode-selector">
+        <button type="button" class="mode-btn active" data-mode="fast">
+          <span class="mode-icon">⚡</span>
+          <span class="mode-label">Cepat</span>
+        </button>
+        <button type="button" class="mode-btn" data-mode="pro">
+          <span class="mode-icon">🎯</span>
+          <span class="mode-label">Pro</span>
+        </button>
+        <button type="button" class="mode-btn mode-extreme" data-mode="extreme">
+          <span class="mode-icon">🔥</span>
+          <span class="mode-label">AI 4x</span>
+        </button>
+        <button type="button" class="mode-btn mode-ultra" data-mode="ultra">
+          <span class="mode-icon">💎</span>
+          <span class="mode-label">ULTRA 8x</span>
+        </button>
+      </div>
+
+      <div class="mode-selector cloud-selector">
+        <button type="button" class="mode-btn mode-cloud" data-mode="cloud-4">
+          <span class="mode-icon">☁️</span>
+          <span class="mode-label">GPU 4x</span>
+        </button>
+        <button type="button" class="mode-btn mode-cloud-max" data-mode="cloud-8">
+          <span class="mode-icon">🚀</span>
+          <span class="mode-label">GPU 8x MAX</span>
+        </button>
+      </div>
+
+      <div class="cloud-settings glass" id="cloudSettings">
+        <h3 class="cloud-title">☁️ Pengaturan Server GPU</h3>
+        <p class="cloud-hint">Deploy backend GPU Anda, lalu masukkan URL di sini.</p>
+        <div class="cloud-field">
+          <label for="cloudApiUrl">URL API</label>
+          <input type="url" id="cloudApiUrl" placeholder="https://gpu-server.com:8080" autocomplete="url">
+        </div>
+        <div class="cloud-field">
+          <label for="cloudApiKey">API Key (opsional)</label>
+          <input type="password" id="cloudApiKey" placeholder="API key jika diaktifkan" autocomplete="off">
+        </div>
+        <div class="cloud-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="btnCloudTest">Tes Koneksi</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btnCloudSave">Simpan</button>
+        </div>
+        <p class="cloud-status" id="cloudStatus"></p>
+      </div>
+
+      <div class="presets">
+        <button type="button" class="preset-btn active" data-preset="detail">🖐 Detail</button>
+        <button type="button" class="preset-btn" data-preset="natural">🌿 Natural</button>
+        <button type="button" class="preset-btn" data-preset="jelas">✨ Jelas</button>
+        <button type="button" class="preset-btn" data-preset="portrait">👤 Portrait</button>
+        <button type="button" class="preset-btn" data-preset="blur">Foto Buram</button>
+        <button type="button" class="preset-btn" data-preset="extreme">🔥 AI 4x</button>
+        <button type="button" class="preset-btn" data-preset="ultra">💎 Ultra</button>
+        <button type="button" class="preset-btn" data-preset="cloud">🚀 Cloud</button>
+        <button type="button" class="preset-btn" data-preset="document">Dokumen</button>
+      </div>
+
+      <div class="controls glass">
+        <div class="control-group" id="deblurGroup">
+          <div class="control-header">
+            <label for="deblur">Deblur (Richardson-Lucy)</label>
+            <span class="control-value" id="deblurValue">0</span>
+          </div>
+          <input type="range" id="deblur" min="0" max="100" value="0">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="sharpness">Ketajaman</label>
+            <span class="control-value" id="sharpnessValue">38</span>
+          </div>
+          <input type="range" id="sharpness" min="0" max="100" value="38">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="clarity">Kejelasan</label>
+            <span class="control-value" id="clarityValue">22</span>
+          </div>
+          <input type="range" id="clarity" min="0" max="100" value="22">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="contrast">Kontras</label>
+            <span class="control-value" id="contrastValue">18</span>
+          </div>
+          <input type="range" id="contrast" min="0" max="100" value="18">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="brightness">Kecerahan</label>
+            <span class="control-value" id="brightnessValue">0</span>
+          </div>
+          <input type="range" id="brightness" min="-50" max="50" value="0">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <label for="denoise">Kurangi Noise</label>
+            <span class="control-value" id="denoiseValue">0</span>
+          </div>
+          <input type="range" id="denoise" min="0" max="100" value="0">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn btn-glow" id="btnEnhance">✦ Proses Lagi</button>
+        <button type="button" class="btn btn-primary" id="btnDownload">Simpan Foto HD</button>
+        <button type="button" class="btn btn-share" id="btnShare">Bagikan</button>
+        <button type="button" class="btn btn-secondary" id="btnReset">Reset</button>
+        <button type="button" class="btn btn-secondary" id="btnNew">Foto Baru</button>
+      </div>
+    </div>
+
+    <div class="note glass">
+      <strong>Cloud GPU:</strong> Mode terkuat — Real-ESRGAN di server NVIDIA GPU (4x/8x).
+      Panduan deploy: <code>backend/DEPLOY-GPU.md</code>.
+      Mode lokal: ULTRA 8x tetap tersedia tanpa server.
+    </div>
+  </div>
+
+  <div class="processing-overlay" id="processingOverlay" aria-live="polite">
+    <div class="processing-box glass">
+      <div class="processing-ring" aria-hidden="true">
+        <div class="ring-inner"></div>
+      </div>
+      <p class="processing-title">Memproses…</p>
+      <p class="processing-step" id="progressStep">Memulai…</p>
+      <div class="progress-track">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <p class="progress-pct" id="progressText">0%</p>
+    </div>
+  </div>
+
+  <script type="module" src="bundle.js"></script>
+</body>
+</html>

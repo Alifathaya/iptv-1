@@ -1,0 +1,10 @@
+backend/weights/
+backend/.env
+android/local.properties
+android-sdk/
+android/app/build/
+android/build/
+android/local.properties
+*.apk
+!docs/releases/*.apk
+.DS_Store
