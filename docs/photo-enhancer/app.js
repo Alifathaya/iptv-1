@@ -15,8 +15,8 @@ import {
   setCloudSettings,
 } from './cloud-api.js';
 
-const AI_INPUT_MAX = 480;
-const AI_INPUT_ULTRA = 320;
+const AI_INPUT_MAX = 768;
+const AI_INPUT_ULTRA = 512;
 const UPSCALER_URL = 'https://esm.sh/upscaler@1.0.0-beta.19';
 const ESRGAN_X4_URL = 'https://esm.sh/@upscalerjs/esrgan-thick@1.0.0-beta.14/x4';
 const ESRGAN_X8_URL = 'https://esm.sh/@upscalerjs/esrgan-thick@1.0.0-beta.14/x8';
@@ -48,13 +48,13 @@ let workerJobId = 0;
 const PRESETS = {
   natural: { mode: 'fast', sharpness: 38, clarity: 22, contrast: 18, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
   jelas: { mode: 'fast', sharpness: 50, clarity: 30, contrast: 24, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
-  portrait: { mode: 'pro', sharpness: 52, clarity: 28, contrast: 16, brightness: 3, denoise: 8, deblur: 28, upscale: 0 },
-  detail: { mode: 'pro', sharpness: 62, clarity: 34, contrast: 20, brightness: 3, denoise: 5, deblur: 35, upscale: 0 },
-  cloud: { mode: 'cloud-8', sharpness: 55, clarity: 35, contrast: 25, brightness: 3, denoise: 15, deblur: 25, upscale: 0 },
-  ultra: { mode: 'ultra', sharpness: 60, clarity: 35, contrast: 25, brightness: 3, denoise: 18, deblur: 28, upscale: 0 },
-  extreme: { mode: 'extreme', sharpness: 55, clarity: 35, contrast: 22, brightness: 3, denoise: 18, deblur: 25, upscale: 0 },
-  blur: { mode: 'pro', sharpness: 58, clarity: 32, contrast: 22, brightness: 3, denoise: 22, deblur: 32, upscale: 0 },
-  document: { mode: 'pro', sharpness: 72, clarity: 28, contrast: 38, brightness: 8, denoise: 8, deblur: 22, upscale: 0 },
+  portrait: { mode: 'pro', sharpness: 52, clarity: 28, contrast: 16, brightness: 3, denoise: 8, deblur: 45, upscale: 0 },
+  detail: { mode: 'pro', sharpness: 62, clarity: 34, contrast: 20, brightness: 3, denoise: 12, deblur: 58, upscale: 0 },
+  cloud: { mode: 'cloud-8', sharpness: 55, clarity: 35, contrast: 25, brightness: 3, denoise: 15, deblur: 50, upscale: 0 },
+  ultra: { mode: 'ultra', sharpness: 60, clarity: 35, contrast: 25, brightness: 3, denoise: 18, deblur: 50, upscale: 0 },
+  extreme: { mode: 'extreme', sharpness: 55, clarity: 35, contrast: 22, brightness: 3, denoise: 18, deblur: 50, upscale: 0 },
+  blur: { mode: 'pro', sharpness: 58, clarity: 32, contrast: 22, brightness: 3, denoise: 22, deblur: 55, upscale: 0 },
+  document: { mode: 'pro', sharpness: 72, clarity: 28, contrast: 38, brightness: 8, denoise: 8, deblur: 45, upscale: 0 },
   auto: { mode: 'fast', sharpness: 42, clarity: 26, contrast: 20, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
 };
 
@@ -382,8 +382,9 @@ async function runAiPipeline(sourceData, scale) {
     result = await aiUpscale(prepped, scale);
   } catch (aiErr) {
     console.warn('AI upscale failed, using algorithmic fallback:', aiErr);
-    updateProgress(50, 'AI gagal — upscale algoritmik…');
-    const mult = scale === 8 ? 4 : 2;
+    updateProgress(50, 'AI gagal — upscale algoritmik HQ…');
+    // FIX: smoothing sudah ON + mult dikecilkan agar tidak blocky/OOM
+    const mult = scale === 8 ? 3 : 2;
     const fallback = scaleImageData(prepped, prepped.width * mult, prepped.height * mult);
     result = await runWorker('process', fallback, 'post-polish');
     return result;
