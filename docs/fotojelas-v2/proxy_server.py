@@ -20,7 +20,7 @@ VAST_API = "https://console.vast.ai/api/v0"
 VAST_API_V1 = "https://console.vast.ai/api/v1"
 VAST_KEY_FILE = os.path.expanduser("~/.vast-api-key")
 VAST_STATE_FILE = "/opt/fotojelas-proxy/vast.json"
-IDLE_MINUTES = 15  # destroy GPU kalau nganggur selama ini (nol total)
+IDLE_MINUTES = 1  # cadangan: destroy bila destroy-utama gagal
 DEPLOYING: dict = {"active": False, "msg": ""}
 
 
@@ -221,6 +221,7 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
     else:
         raise RuntimeError("program GPU tidak siap dalam 30 menit, cek setup.log instance")
     st["last_used"] = time.time()
+    st["busy"] = True  # kunci: watchdog tidak boleh destroy saat job jalan
     _vast_save(st)
     return {"endpoint": ep, "token": st.get("gpu_token", "")}
 
@@ -239,17 +240,22 @@ async def _vast_destroy(client: httpx.AsyncClient, iid: int) -> None:
 
 async def _vast_enhance(client: httpx.AsyncClient, image: str, fidelity: float, upscale: int) -> str:
     info = await _vast_ensure_running(client)
-    r = await client.post(
-        info["endpoint"] + "/v1/restore",
-        json={"mode": "enhance", "image": image, "fidelity": fidelity, "upscale": upscale},
-        headers={"X-Api-Token": info["token"]},
-        timeout=600,
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"gpu {r.status_code}: {r.text[:300]}")
-    b64 = r.json().get("image_b64")
-    if not b64:
-        raise RuntimeError("gpu hasil kosong")
+    try:
+        r = await client.post(
+            info["endpoint"] + "/v1/restore",
+            json={"mode": "enhance", "image": image, "fidelity": fidelity, "upscale": upscale},
+            headers={"X-Api-Token": info["token"]},
+            timeout=600,
+        )
+        if r.status_code != 200:
+            raise RuntimeError(f"gpu {r.status_code}: {r.text[:300]}")
+        b64 = r.json().get("image_b64")
+        if not b64:
+            raise RuntimeError("gpu hasil kosong")
+    finally:
+        st = _vast_state()
+        st["busy"] = False
+        _vast_save(st)
     # hasil sudah di tangan -> destroy langsung (nol total), watchdog jadi cadangan
     st = _vast_state()
     if st.get("instance_id"):
@@ -264,7 +270,7 @@ async def _vast_watchdog() -> None:
             st = _vast_state()
             iid = st.get("instance_id")
             last = st.get("last_used", 0)
-            if not iid or not last or time.time() - last < IDLE_MINUTES * 60:
+            if not iid or st.get("busy") or not last or time.time() - last < IDLE_MINUTES * 60:
                 continue
             async with httpx.AsyncClient(timeout=30) as client:
                 inst = await _vast_instance(client, iid)
