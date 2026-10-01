@@ -1,4 +1,4 @@
-/* Foto Jelas Pro v2 web preview — enhance / colorize / full restore via Replicate */
+/* Foto Jelas Pro v2 web preview — enhance / colorize / full restore via fal.ai */
 function el(id) { return document.getElementById(id); }
 const state = { mode: 'enhance', beforeURL: null, beforeBlob: null, afterURL: null, busy: false };
 const DESCS = {
@@ -6,13 +6,13 @@ const DESCS = {
   colorize: 'Foto lama hitam-putih jadi berwarna (DDColor).',
   full: 'Foto lama hitam-putih + buram jadi berwarna tajam (DDColor lalu CodeFormer).'
 };
-const DEF = { mEnh: 'sczhou/codeformer', mCol: 'piddnad/ddcolor', mUps: 'nightmareai/real-esrgan' };
+const DEF = { mEnh: 'fal-ai/codeformer', mCol: 'fal-ai/ddcolor' };
 
 function loadCfg() {
   el('token').value = localStorage.getItem('fj2.token') || '';
   el('mEnh').value = localStorage.getItem('fj2.mEnh') || DEF.mEnh;
   el('mCol').value = localStorage.getItem('fj2.mCol') || DEF.mCol;
-  el('mUps').value = localStorage.getItem('fj2.mUps') || DEF.mUps;
+  el('mUps').value = localStorage.getItem('fj2.mUps') || '2';
 }
 function setStatus(m) { el('status').textContent = m || ''; }
 function setProg(p) {
@@ -117,8 +117,8 @@ async function urlToBlob(u) {
   return await r.blob();
 }
 
-// Semua panggilan Replicate lewat proxy VPS (same-origin) agar bebas CORS.
-// Token dikirim per-request via header, tidak disimpan di server.
+// Semua panggilan fal.ai lewat proxy VPS (same-origin) agar bebas CORS.
+// Key dikirim per-request via header, tidak disimpan di server.
 async function runViaProxy(body, token, onp) {
   const ctrl = new AbortController();
   const t = setTimeout(function () { ctrl.abort(); }, 8 * 60 * 1000);
@@ -131,7 +131,7 @@ async function runViaProxy(body, token, onp) {
   try {
     const r = await fetch('/api/restore', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Replicate-Token': token },
+      headers: { 'Content-Type': 'application/json', 'X-Fal-Key': token },
       body: JSON.stringify(body),
       signal: ctrl.signal
     });
@@ -139,7 +139,7 @@ async function runViaProxy(body, token, onp) {
       let detail = '';
       try { detail = (await r.json()).detail || ''; } catch (e) { detail = await r.text(); }
       let hint = '';
-      if (r.status === 400 && String(detail).indexOf('Token') >= 0) hint = 'Isi API token Replicate dulu lalu Simpan.';
+      if (r.status === 400 && String(detail).indexOf('Key') >= 0) hint = 'Isi API key fal.ai dulu lalu Simpan.';
       throw new Error('Server ' + r.status + (hint ? ' — ' + hint : '') + ' ' + String(detail).slice(0, 500));
     }
     const j = await r.json();
@@ -183,7 +183,7 @@ el('btnDemo').addEventListener('click', async function () {
   showResult(b);
   setProg(100);
   doneProg();
-  setStatus('Demo selesai. Untuk hasil AI asli isi token Replicate.');
+  setStatus('Demo selesai. Untuk hasil AI asli isi key fal.ai.');
 });
 
 el('btnRun').addEventListener('click', async function () {
@@ -193,12 +193,13 @@ el('btnRun').addEventListener('click', async function () {
   try {
     const token = el('token').value.trim() || localStorage.getItem('fj2.token') || '';
     if (!token) {
-      alert('Isi API token Replicate dulu (gratis trial), atau pakai Coba tanpa token untuk demo.');
-      setStatus('Butuh token.');
+      alert('Isi API key fal.ai dulu (gratis $10), atau pakai Coba tanpa token untuk demo.');
+      setStatus('Butuh key.');
       return;
     }
     const extra = extraJSON();
     const fid = parseFloat(el('fidelity').value);
+    const ups = parseInt(el('mUps').value.trim() || '2', 10) || 2;
     const dataURL = await blobToDataURL(state.beforeBlob);
     const onp = function (p, m) { setProg(p); setStatus(m); };
     onp(3, state.mode === 'colorize' ? 'Mewarnai...' : state.mode === 'full' ? 'Full restore...' : 'Memperjelas...');
@@ -206,6 +207,7 @@ el('btnRun').addEventListener('click', async function () {
       mode: state.mode,
       image: dataURL,
       fidelity: fid,
+      upscale: ups,
       model_enhance: el('mEnh').value.trim() || DEF.mEnh,
       model_colorize: el('mCol').value.trim() || DEF.mCol,
       extra: extra

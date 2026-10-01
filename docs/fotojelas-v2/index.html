@@ -44,13 +44,13 @@
 <p class="status" id="status"></p>
 </div>
 <details class="card">
-<summary>Pengaturan API (Replicate — gratis trial)</summary>
-<label>API token (replicate.com/account/api-tokens)</label>
-<input type="password" id="token" placeholder="r8_..." autocomplete="off">
+<summary>Pengaturan API (fal.ai — kredit gratis $10)</summary>
+<label>API key (fal.ai/dashboard/keys)</label>
+<input type="password" id="token" placeholder="xxxxxxxx-xxxx-..." autocomplete="off">
 <div class="grid">
-<div><label>Model enhance</label><input id="mEnh" value="sczhou/codeformer"></div>
-<div><label>Model warna</label><input id="mCol" value="piddnad/ddcolor"></div>
-<div><label>Model upscale umum</label><input id="mUps" value="nightmareai/real-esrgan"></div>
+<div><label>Model enhance</label><input id="mEnh" value="fal-ai/codeformer"></div>
+<div><label>Model warna</label><input id="mCol" value="fal-ai/ddcolor"></div>
+<div><label>Upscale</label><input id="mUps" value="2"></div>
 </div>
 <label>JSON tambahan (opsional, override input model)</label>
 <textarea id="extra" rows="3" placeholder='{}'></textarea>
@@ -58,7 +58,7 @@
 <button id="btnSave">Simpan</button>
 <button id="btnDemo" class="ghost">Coba tanpa token (demo lokal)</button>
 </div>
-<p class="hint">Estimasi: DDColor ~0.001 USD, CodeFormer ~0.003 USD, ESRGAN 0.005-0.03 USD/foto. Produksi nanti token pindah ke backend proxy agar tidak dicuri dari APK.</p>
+<p class="hint">Estimasi fal.ai: CodeFormer ~0.0021 USD/megapixel, DDColor murah. Produksi nanti key pindah ke backend proxy agar tidak dicuri dari APK.</p>
 </details>
 <footer><p>Web preview v2 — cocok baru kita bungkus APK. Tanpa token = demo lokal terbatas.</p></footer>
 </div>

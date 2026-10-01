@@ -1,14 +1,13 @@
 # Foto Jelas Pro v2 — web preview
 
-Design baru: Perjelas / Warnai B&W / Full Restore via Replicate API.
-File statis, tanpa build. Token Replicate hanya di browser (localStorage), khusus testing.
+Design baru: Perjelas / Warnai B&W / Full Restore via fal.ai API.
+File statis + proxy VPS, tanpa build. Key fal.ai hanya di browser (localStorage), khusus testing.
 
 ## Cara periksa (pilih satu)
 
-Opsi A — di VPS ini:
+Opsi A — di VPS ini (proxy + web jalan di port 8099):
 ```
-cd /tmp/fotojelas-v2/docs/fotojelas-v2 && python3 -m http.server 8099
-# buka http://173.249.25.166:8099/  (atau via ssh tunnel)
+# buka http://173.249.25.166:8099/
 ```
 
 Opsi B — di komputer lokal:
@@ -19,14 +18,14 @@ cd iptv-1/docs/fotojelas-v2 && python3 -m http.server 8099
 # buka http://localhost:8099/
 ```
 
-## Isi token gratis
-1. Daftar replicate.com → replicate.com/account/api-tokens
-2. Tempel token di panel Pengaturan API → Simpan
+## Isi key gratis ($10)
+1. Daftar fal.ai → fal.ai/dashboard/keys → buat key baru
+2. Tempel key di panel Pengaturan API → Simpan
 3. Upload foto → pilih mode → tekan tombol
-4. Tanpa token: pakai tombol "Coba tanpa token" (demo lokal, bukan AI)
+4. Tanpa key: pakai tombol "Coba tanpa token" (demo lokal, bukan AI)
 
-## Estimasi biaya
-DDColor ~0.001 USD, CodeFormer ~0.003 USD, ESRGAN 0.005-0.03 USD per foto.
+## Estimasi biaya fal.ai
+CodeFormer ~0.0021 USD/megapixel, DDColor murah per gambar.
 
 ## Naik APK
 Kalau design oke: `capacitor.config` webDir diarahkan ke folder ini,
