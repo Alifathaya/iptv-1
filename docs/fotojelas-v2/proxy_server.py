@@ -327,15 +327,18 @@ async def _vast_deploy_job() -> None:
                 return
             token = secrets.token_hex(16)
             image = "ghcr.io/alifathaya/fotojelas-gpu:1"
+            body = {"image": image, "disk": 30,
+                    "env": f"-e FJ_TOKEN={token}"}
+            try:
+                with open(os.path.expanduser("~/.github-packages-token")) as f:
+                    ght = f.read().strip()
+                if ght:
+                    body["image_login"] = f"Alifathaya:{ght}"
+            except OSError:
+                pass
             DEPLOYING["msg"] = f"sewa {offer.get('gpu_name')} ${offer.get('dph_total')}/jam..."
             c = await client.put(
-                f"{VAST_API}/asks/{offer['id']}/",
-                json={
-                    "image": image,
-                    "disk": 30,
-                    "env": f"-e FJ_TOKEN={token}",
-                },
-                headers=_vast_headers(),
+                f"{VAST_API}/asks/{offer['id']}/", json=body, headers=_vast_headers(),
             )
             j = c.json()
             if not j.get("success"):
