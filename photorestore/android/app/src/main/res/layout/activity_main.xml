@@ -10,6 +10,10 @@
     <TextView android:id="@+id/tvStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Pilih foto" />
     <ProgressBar android:id="@+id/prog" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="100" />
     <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <Spinner android:id="@+id/spMode" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:entries="@array/modes" />
+        <SeekBar android:id="@+id/seekFid" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:max="20" android:progress="10" />
+    </LinearLayout>
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
         <Button android:id="@+id/btnPick" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="Pilih" />
         <Button android:id="@+id/btnCamera" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="Kamera" />
         <Button android:id="@+id/btnGo" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="Enhance" />

@@ -97,3 +97,14 @@ upscale → ColorEnhance (gray-world WB ±15%, gamma exposure, saturasi +10%
 kecuali kulit via masker YCrCb).
 API: mode `hd` + `fidelity` aktif; ultra tetap ditolak eksplisit.
 Teruji: Lena (1 wajah, restored:1), API 8/8, benchmark 30/30 OK.
+
+## Phase 4 — status: JALAN, teruji 2026-10-01
+
+Deblur modular (`DeblurProcessor.process(image, strength)` light/medium/strong;
+backend Richardson-Lucy FFT, backend AI tinggal tambah class). HD sekarang
+ikut deblur. Mode **ultra**: deblur min medium + upscale paksa 4x + QC gate
+(cek dimensi target, blur/noise diukur pada resolusi SAMA — pelajaran dari
+false-reject lintas skala — tolak bila ketajaman anjlok/noise >40).
+Android: pilihan mode basic/hd/ultra + slider fidelity.
+Teruji: Lena ultra 9 tahap lolos QC (blur 449→1233, 512→2048, 2.5 dtk),
+API 8/8, benchmark 30/30 OK.

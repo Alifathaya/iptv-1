@@ -82,7 +82,9 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) { setStatus("Upload..."); setProg(5) }
                 val f = uriToFile(uri)
                 val part = MultipartBody.Part.createFormData("file", f.name, f.asRequestBody("image/*".toMediaType()))
-                val en = api.enhance(part, "basic".toRequestBody(), "medium".toRequestBody())
+                val mode = findViewById<Spinner>(R.id.spMode).selectedItem.toString()
+                val fid = 0.7f + findViewById<SeekBar>(R.id.seekFid).progress * 0.01f
+                val en = api.enhance(part, mode.toRequestBody(), "medium".toRequestBody(), fid.toString().toRequestBody())
                 jobId = en.job_id
                 while (true) {
                     delay(2000)

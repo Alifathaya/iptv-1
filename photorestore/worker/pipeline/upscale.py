@@ -71,6 +71,7 @@ class Upscale(Stage):
             self.backend = LanczosUpscaler()
 
     def run(self, image: np.ndarray, ctx: dict) -> StageResult:
-        scale = pick_scale(max(image.shape[:2]))
+        scale = ctx.get("force_scale") or pick_scale(max(image.shape[:2]))
         out = self.backend.upscale(image, scale)
+        ctx["expected_scale"] = scale
         return StageResult(out, {"backend": self.backend.name, "scale": scale})

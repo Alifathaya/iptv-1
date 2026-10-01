@@ -17,9 +17,8 @@ app = FastAPI(title=config.APP_NAME)
 @app.post(config.API_PREFIX + "/enhance")
 async def enhance(file: UploadFile = File(...), mode: str = Form("basic"), strength: str = Form("medium"),
                   fidelity: float = Form(0.8)):
-    if mode not in ("basic", "hd"):
-        # Ultra aktif Phase 4+ (butuh difusi/GPU). Ditolak eksplisit.
-        raise HTTPException(status_code=400, detail=f"mode {mode} belum tersedia (baru: basic, hd)")
+    if mode not in ("basic", "hd", "ultra"):
+        raise HTTPException(status_code=400, detail=f"mode {mode} tidak dikenal (basic/hd/ultra)")
     if strength not in ("light", "medium", "strong"):
         raise HTTPException(status_code=400, detail="strength: light/medium/strong")
     if not 0.7 <= fidelity <= 0.9:

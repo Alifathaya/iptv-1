@@ -33,10 +33,10 @@ buf = io.BytesIO()
 Image.new("RGB", (10, 10)).save(buf, "JPEG")
 r = httpx.post(BASE + "/api/v1/enhance", files={"file": ("k.jpg", buf.getvalue(), "image/jpeg")})
 check("tolak terlalu kecil", r.status_code == 400, r.status_code)
-# invalid: mode belum ada
+# invalid: mode tidak dikenal
 with open(f"{SAMPLES}/med_00.jpg", "rb") as f:
-    r = httpx.post(BASE + "/api/v1/enhance", files={"file": ("m.jpg", f, "image/jpeg")}, data={"mode": "ultra"})
-check("tolak mode ultra", r.status_code == 400, r.status_code)
+    r = httpx.post(BASE + "/api/v1/enhance", files={"file": ("m.jpg", f, "image/jpeg")}, data={"mode": "mega"})
+check("tolak mode mega", r.status_code == 400, r.status_code)
 
 # valid: job selesai + hasil 2x
 with open(f"{SAMPLES}/low_00.jpg", "rb") as f:

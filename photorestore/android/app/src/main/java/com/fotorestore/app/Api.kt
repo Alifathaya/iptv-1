@@ -14,7 +14,8 @@ interface Api {
     @Multipart @POST("api/v1/enhance")
     suspend fun enhance(@Part file: MultipartBody.Part,
                         @Part("mode") mode: okhttp3.RequestBody,
-                        @Part("strength") strength: okhttp3.RequestBody): EnhanceResp
+                        @Part("strength") strength: okhttp3.RequestBody,
+                        @Part("fidelity") fidelity: okhttp3.RequestBody): EnhanceResp
     @GET("api/v1/jobs/{id}") suspend fun job(@Path("id") id: String): JobResp
     @GET("api/v1/result/{id}") suspend fun result(@Path("id") id: String): ResponseBody
     @DELETE("api/v1/result/{id}") suspend fun delete(@Path("id") id: String): Map<String, Any>

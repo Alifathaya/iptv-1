@@ -31,7 +31,11 @@ def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: 
     if img is None:
         raise ValueError("gagal baca gambar sumber")
     h0, w0 = img.shape[:2]
-    ctx = {"strength": strength, "fidelity": fidelity}
+    ctx = {"strength": strength, "fidelity": fidelity, "in_wh": (w0, h0)}
+    if mode == "ultra":
+        # ultra: deblur minimal medium + upscale paksa 4x (maksimum resolusi)
+        ctx["deblur_strength"] = {"light": "medium"}.get(strength, strength)
+        ctx["force_scale"] = 4
     stages = PIPELINES[mode]
     _progress(20, "processing")
     used = []
