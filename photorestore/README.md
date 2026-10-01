@@ -75,3 +75,13 @@ skor ≤80, CLAHE luminance, unsharp, Lanczos 2x) → PNG 2x → download.
 Test: 8/8 validasi + alur lolos; benchmark 30/30 OK, rata-rata 2.2 dtk/foto,
 RSS 32→100MB. Android: build lokal via Android Studio (isi API_BASE),
 pola sama seperti APK selama ini.
+
+## Phase 2 — status: JALAN, teruji 2026-10-01
+
+Pipeline: Quality+ (blur/noise/brightness/contrast/artefak blok/grayscale/
+jumlah wajah Haar + rekomendasi basic/hd/heavy) → Denoise adaptif
+(dilewati bila noise rendah; bilateral cepat vs NlMeans) → Enhance →
+Upscale modular (Lanczos selalu; Real-ESRGAN otomatis bila
+USE_REALESRGAN=1 + torch + GPU; aturan <1000px=4x, >2000px=2x, configurable).
+Test: unit quality 5/5 (tajam>buram, aturan skala), API 8/8, benchmark 30/30
+OK rata-rata 2.7 dtk/foto.
