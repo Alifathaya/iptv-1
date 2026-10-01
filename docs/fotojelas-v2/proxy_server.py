@@ -275,13 +275,14 @@ async def _vast_watchdog() -> None:
                 continue
             async with httpx.AsyncClient(timeout=30) as client:
                 inst = await _vast_instance(client, iid)
-                if inst.get("actual_status") in ("running", "loading", None):
+                # hanya destroy yang RUNNING + nganggur; loading/creating dibiarkan
+                if inst.get("actual_status") == "running":
                     await client.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
                     log.info("vast %s auto-destroy (nganggur %s mnt) -> nol total", iid, IDLE_MINUTES)
-            st = _vast_state()
-            st.pop("instance_id", None)
-            st["last_used"] = 0
-            _vast_save(st)
+                    st = _vast_state()
+                    st.pop("instance_id", None)
+                    st["last_used"] = 0
+                    _vast_save(st)
         except Exception as e:
             log.warning("watchdog: %s", e)
 
@@ -348,9 +349,19 @@ async def _vast_deploy_job() -> None:
                 DEPLOYING["msg"] = f"sewa gagal: {j}"
                 return
             iid = j["new_contract"]
-            _vast_save({"instance_id": iid, "gpu_token": token, "last_used": time.time()})
+            _vast_save({"instance_id": iid, "gpu_token": token, "last_used": 0, "busy": False})
             DEPLOYING["msg"] = f"instance {iid} disiapkan (image jadi, ±5 menit)..."
-            info = await _vast_ensure_running(client)
+            try:
+                info = await _vast_ensure_running(client)
+            except Exception:
+                # deploy gagal -> hapus yatim agar tidak menagih
+                try:
+                    async with httpx.AsyncClient(timeout=30) as c2:
+                        await c2.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
+                except Exception:
+                    pass
+                _vast_save({})
+                raise
             DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
             log.info("vast deploy OK %s", iid)
     except Exception as e:
