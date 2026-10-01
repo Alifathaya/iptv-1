@@ -255,6 +255,7 @@ async def _vast_enhance(client: httpx.AsyncClient, image: str, fidelity: float, 
     finally:
         st = _vast_state()
         st["busy"] = False
+        st["last_used"] = time.time()  # watchdog dihitung dari SELESAI
         _vast_save(st)
     # hasil sudah di tangan -> destroy langsung (nol total), watchdog jadi cadangan
     st = _vast_state()
