@@ -1,7 +1,9 @@
-"""Foto Jelas v2 — backend proxy fal.ai (key tidak disimpan, hanya diteruskan)."""
+"""Foto Jelas v2 — proxy: enhance via GPU Vast.ai (kalau ada), warnai via fal.ai."""
 import asyncio
 import base64
+import json
 import logging
+import os
 import time
 
 import httpx
@@ -12,8 +14,12 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("fjv2")
 
-app = FastAPI(title="Foto Jelas v2 proxy (fal.ai)")
+app = FastAPI(title="Foto Jelas v2 proxy")
 QUEUE = "https://queue.fal.run"
+VAST_API = "https://console.vast.ai/api/v0"
+VAST_KEY_FILE = os.path.expanduser("~/.vast-api-key")
+VAST_STATE_FILE = "/opt/fotojelas-proxy/vast.json"
+IDLE_MINUTES = 15  # stop GPU kalau nganggur selama ini
 
 
 class RestoreReq(BaseModel):
@@ -67,40 +73,196 @@ async def _run(client: httpx.AsyncClient, key: str, model: str, inp: dict, label
 
 @app.post("/api/restore")
 async def restore(req: RestoreReq, x_fal_key: str = Header(default="")):
-    key = (x_fal_key or "").strip()
-    if not key:
-        raise HTTPException(status_code=400, detail="Key fal.ai kosong.")
     if req.mode not in ("enhance", "colorize", "full"):
         raise HTTPException(status_code=400, detail="mode harus enhance/colorize/full")
+    provider = "fal"
     async with httpx.AsyncClient(timeout=60) as client:
         if req.mode == "enhance":
+            key = (x_fal_key or "").strip()
+            if _vast_configured():
+                try:
+                    b64 = await _vast_enhance(client, req.image, req.fidelity, req.upscale)
+                    return {"image_b64": b64, "provider": "vast-gpu"}
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    log.warning("vast gagal, fallback fal: %s", e)
+            if not key:
+                raise HTTPException(status_code=400, detail="Key fal.ai kosong (dan GPU Vast belum aktif).")
             inp = {"image_url": req.image, "fidelity": req.fidelity,
                    "upscale_factor": req.upscale, "face_upscale": True}
             inp.update(req.extra)
             url = await _run(client, key, req.model_enhance, inp, "enhance")
         elif req.mode == "colorize":
+            key = (x_fal_key or "").strip()
+            if not key:
+                raise HTTPException(status_code=400, detail="Key fal.ai kosong.")
             inp = {"image_url": req.image}
             inp.update(req.extra)
             url = await _run(client, key, req.model_colorize, inp, "colorize")
         else:
+            key = (x_fal_key or "").strip()
+            if not key:
+                raise HTTPException(status_code=400, detail="Key fal.ai kosong.")
             inp1 = {"image_url": req.image}
             inp1.update((req.extra or {}).get("colorize", {}))
             colored = await _run(client, key, req.model_colorize, inp1, "full-1-colorize")
+            if _vast_configured():
+                try:
+                    b64 = await _vast_enhance(client, colored, req.fidelity, req.upscale)
+                    return {"image_b64": b64, "provider": "vast-gpu"}
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    log.warning("vast gagal, fallback fal: %s", e)
             inp2 = {"image_url": colored, "fidelity": req.fidelity,
                     "upscale_factor": req.upscale, "face_upscale": True}
             inp2.update((req.extra or {}).get("enhance", {}))
             url = await _run(client, key, req.model_enhance, inp2, "full-2-enhance")
         d = await client.get(url, timeout=120)
         if d.status_code != 200:
-            return {"image_url": url}
+            return {"image_url": url, "provider": provider}
         b64 = base64.b64encode(d.content).decode()
         mime = d.headers.get("content-type", "image/png").split(";")[0]
-        return {"image_b64": f"data:{mime};base64,{b64}"}
+        return {"image_b64": f"data:{mime};base64,{b64}", "provider": provider}
+
+
+# ---------- Vast.ai GPU (auto start/stop) ----------
+
+def _vast_key() -> str:
+    try:
+        with open(VAST_KEY_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _vast_configured() -> bool:
+    if not _vast_key():
+        return False
+    try:
+        with open(VAST_STATE_FILE) as f:
+            return bool(json.load(f).get("instance_id"))
+    except OSError:
+        return False
+
+
+def _vast_headers() -> dict:
+    return {"Authorization": "Bearer " + _vast_key(), "Content-Type": "application/json"}
+
+
+def _vast_state() -> dict:
+    try:
+        with open(VAST_STATE_FILE) as f:
+            return json.load(f)
+    except OSError:
+        return {}
+
+
+def _vast_save(state: dict) -> None:
+    with open(VAST_STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+
+async def _vast_instance(client: httpx.AsyncClient, iid: int) -> dict:
+    r = await client.get(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
+    r.raise_for_status()
+    insts = r.json().get("instances", {})
+    return insts.get(str(iid), {}) if isinstance(insts, dict) else {}
+
+
+def _vast_endpoint(inst: dict) -> str:
+    ip = inst.get("public_ipaddr") or ""
+    ports = inst.get("ports") or {}
+    for name, maps in ports.items():
+        if str(name).startswith("8000/") and maps:
+            return f"http://{ip}:{maps[0].get('HostPort')}"
+    return ""
+
+
+async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
+    st = _vast_state()
+    iid = st.get("instance_id")
+    if not iid:
+        raise RuntimeError("vast belum di-deploy")
+    inst = await _vast_instance(client, iid)
+    status = inst.get("actual_status")
+    if status != "running":
+        log.info("vast %s status=%s -> start", iid, status)
+        r = await client.put(f"{VAST_API}/instances/{iid}/", json={"state": "running"}, headers=_vast_headers())
+        if not r.json().get("success", True):
+            raise RuntimeError(f"start gagal: {r.text[:200]}")
+        t0 = time.time()
+        while time.time() - t0 < 600:
+            await asyncio.sleep(15)
+            inst = await _vast_instance(client, iid)
+            status = inst.get("actual_status")
+            if status == "running":
+                break
+            if status in ("exited", "unknown", "offline"):
+                raise RuntimeError(f"instance {status}, hubungi admin")
+        else:
+            raise RuntimeError("instance tidak running dalam 10 menit")
+    ep = _vast_endpoint(inst)
+    if not ep:
+        raise RuntimeError("port 8000 instance tidak ketemu")
+    st["last_used"] = time.time()
+    _vast_save(st)
+    return {"endpoint": ep, "token": st.get("gpu_token", "")}
+
+
+async def _vast_enhance(client: httpx.AsyncClient, image: str, fidelity: float, upscale: int) -> str:
+    info = await _vast_ensure_running(client)
+    r = await client.post(
+        info["endpoint"] + "/v1/restore",
+        json={"mode": "enhance", "image": image, "fidelity": fidelity, "upscale": upscale},
+        headers={"X-Api-Token": info["token"]},
+        timeout=600,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"gpu {r.status_code}: {r.text[:300]}")
+    b64 = r.json().get("image_b64")
+    if not b64:
+        raise RuntimeError("gpu hasil kosong")
+    st = _vast_state()
+    st["last_used"] = time.time()
+    _vast_save(st)
+    return b64
+
+
+async def _vast_watchdog() -> None:
+    while True:
+        await asyncio.sleep(60)
+        try:
+            st = _vast_state()
+            iid = st.get("instance_id")
+            last = st.get("last_used", 0)
+            if not iid or not last or time.time() - last < IDLE_MINUTES * 60:
+                continue
+            async with httpx.AsyncClient(timeout=30) as client:
+                inst = await _vast_instance(client, iid)
+                if inst.get("actual_status") == "running":
+                    await client.put(f"{VAST_API}/instances/{iid}/", json={"state": "stopped"}, headers=_vast_headers())
+                    log.info("vast %s auto-stop (nganggur %s mnt)", iid, IDLE_MINUTES)
+        except Exception as e:
+            log.warning("watchdog: %s", e)
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    asyncio.create_task(_vast_watchdog())
+
+
+@app.get("/api/vast-status")
+def vast_status():
+    st = _vast_state()
+    return {"configured": _vast_configured(), "instance_id": st.get("instance_id"),
+            "last_used": st.get("last_used"), "idle_minutes": IDLE_MINUTES}
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "provider": "fal.ai"}
+    return {"status": "ok", "vast": _vast_configured()}
 
 
 app.mount("/", StaticFiles(directory="/tmp/fotojelas-v2/docs/fotojelas-v2", html=True), name="web")

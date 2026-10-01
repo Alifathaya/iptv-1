@@ -145,7 +145,10 @@ async function runViaProxy(body, token, onp) {
     }
     const j = await r.json();
     if (onp) onp(92, 'Unduh hasil...');
-    if (j.image_b64) return await b64ToBlob(j.image_b64);
+    if (j.image_b64) {
+      if (onp) onp(96, 'Selesai via ' + (j.provider === 'vast-gpu' ? 'GPU Vast' : 'fal.ai') + '.');
+      return await b64ToBlob(j.image_b64);
+    }
     return await urlToBlob(j.image_url);
   } catch (e) {
     if (e.name === 'AbortError') throw new Error('Timeout 8 menit. Coba foto lebih kecil.');
