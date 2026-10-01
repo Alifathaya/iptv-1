@@ -9,6 +9,7 @@ RUN apt-get update -qq \
  && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install -q --upgrade pip \
+ && python3 -m pip install -q --no-cache-dir "numpy<2" \
  && python3 -m pip install -q --no-cache-dir \
       fastapi "uvicorn[standard]" python-multipart opencv-python-headless \
       basicsr facexlib gfpgan realesrgan
