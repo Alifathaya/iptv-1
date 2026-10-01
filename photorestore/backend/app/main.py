@@ -15,16 +15,18 @@ app = FastAPI(title=config.APP_NAME)
 
 
 @app.post(config.API_PREFIX + "/enhance")
-async def enhance(file: UploadFile = File(...), mode: str = Form("basic"), strength: str = Form("medium")):
-    if mode != "basic":
-        # HD/Ultra aktif mulai Phase 3 (butuh model wajah). Bukan placeholder:
-        # request ditolak eksplisit agar klien tidak menunggu hasil yang tak ada.
-        raise HTTPException(status_code=400, detail=f"mode {mode} belum tersedia di Phase 1 (baru: basic)")
+async def enhance(file: UploadFile = File(...), mode: str = Form("basic"), strength: str = Form("medium"),
+                  fidelity: float = Form(0.8)):
+    if mode not in ("basic", "hd"):
+        # Ultra aktif Phase 4+ (butuh difusi/GPU). Ditolak eksplisit.
+        raise HTTPException(status_code=400, detail=f"mode {mode} belum tersedia (baru: basic, hd)")
     if strength not in ("light", "medium", "strong"):
         raise HTTPException(status_code=400, detail="strength: light/medium/strong")
+    if not 0.7 <= fidelity <= 0.9:
+        raise HTTPException(status_code=400, detail="fidelity: 0.7-0.9")
     raw = validate_upload(file)
     job_id, src = storage.save_original(raw, file.content_type or "image/jpeg")
-    jobs.enqueue_enhance(job_id, src, mode, strength)
+    jobs.enqueue_enhance(job_id, src, mode, strength, fidelity)
     log.info("job %s queued mode=%s strength=%s", job_id, mode, strength)
     return {"job_id": job_id, "status": "queued"}
 

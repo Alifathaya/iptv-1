@@ -85,3 +85,15 @@ Upscale modular (Lanczos selalu; Real-ESRGAN otomatis bila
 USE_REALESRGAN=1 + torch + GPU; aturan <1000px=4x, >2000px=2x, configurable).
 Test: unit quality 5/5 (tajam>buram, aturan skala), API 8/8, benchmark 30/30
 OK rata-rata 2.7 dtk/foto.
+
+## Phase 3 — status: JALAN, teruji 2026-10-01
+
+Pipeline HD (7 tahap): quality → denoise → enhance → FaceDetect (YuNet bila
+OpenCV mendukung, otomatis fallback Haar; box + confidence) → FaceRestore
+modular (backend GFPGAN otomatis bila torch+GPU, kalau tidak klasik CPU
+konservatif; fidelity 0.7–0.9; confidence rendah hanya polish ringan;
+crop → restore → seamlessClone blend, bukan restore seluruh gambar) →
+upscale → ColorEnhance (gray-world WB ±15%, gamma exposure, saturasi +10%
+kecuali kulit via masker YCrCb).
+API: mode `hd` + `fidelity` aktif; ultra tetap ditolak eksplisit.
+Teruji: Lena (1 wajah, restored:1), API 8/8, benchmark 30/30 OK.

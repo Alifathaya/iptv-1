@@ -22,7 +22,7 @@ def _progress(pct: int, status: str) -> None:
         pass
 
 
-def run_enhance(job_id: str, src_path: str, mode: str, strength: str) -> dict:
+def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: float = 0.8) -> dict:
     from backend.app import storage  # diimpor di sini agar path RQ fleksibel
 
     t0 = time.time()
@@ -31,21 +31,23 @@ def run_enhance(job_id: str, src_path: str, mode: str, strength: str) -> dict:
     if img is None:
         raise ValueError("gagal baca gambar sumber")
     h0, w0 = img.shape[:2]
-    ctx = {"strength": strength}
+    ctx = {"strength": strength, "fidelity": fidelity}
     stages = PIPELINES[mode]
     _progress(20, "processing")
     used = []
+    notes = {}
     for i, stage in enumerate(stages):
         res = stage.run(img, ctx)
         img = res.image
-        used.append({stage.name: res.notes})
+        used.append(stage.name)
+        notes[stage.name] = res.notes
         _progress(20 + int(60 * (i + 1) / len(stages)), "processing")
     out_path = storage.processed_path(job_id)
     cv2.imwrite(out_path, img, [cv2.IMWRITE_PNG_COMPRESSION, 3])
     dt = round(time.time() - t0, 2)
     h1, w1 = img.shape[:2]
     entry = {"job_id": job_id, "mode": mode, "strength": strength,
-             "stages": [s.name for s in stages], "seconds": dt,
+             "stages": used, "stage_notes": notes, "seconds": dt,
              "in_wh": [w0, h0], "out_wh": [w1, h1],
              "quality": ctx.get("quality"), "gpu": False, "api_cost": 0.0}
     os.makedirs(os.path.dirname(COST_LOG), exist_ok=True)

@@ -17,11 +17,11 @@ def get_queue() -> Queue:
     return _queue
 
 
-def enqueue_enhance(job_id: str, src_path: str, mode: str, strength: str) -> str:
+def enqueue_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: float = 0.8) -> str:
     q = get_queue()
     job = q.enqueue(
         "tasks.run_enhance",
-        args=(job_id, src_path, mode, strength),
+        args=(job_id, src_path, mode, strength, fidelity),
         job_id=job_id,
         job_timeout=config.JOB_TIMEOUT,
         meta={"progress": 0, "status": "queued", "mode": mode},
