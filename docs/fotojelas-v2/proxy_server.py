@@ -19,7 +19,8 @@ QUEUE = "https://queue.fal.run"
 VAST_API = "https://console.vast.ai/api/v0"
 VAST_KEY_FILE = os.path.expanduser("~/.vast-api-key")
 VAST_STATE_FILE = "/opt/fotojelas-proxy/vast.json"
-IDLE_MINUTES = 15  # stop GPU kalau nganggur selama ini
+IDLE_MINUTES = 15  # destroy GPU kalau nganggur selama ini (nol total)
+DEPLOYING: dict = {"active": False, "msg": ""}
 
 
 class RestoreReq(BaseModel):
@@ -184,7 +185,7 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
     st = _vast_state()
     iid = st.get("instance_id")
     if not iid:
-        raise RuntimeError("vast belum di-deploy")
+        raise RuntimeError("GPU belum dinyalakan. Tekan tombol Nyalakan GPU di panel Pengaturan, tunggu ±20 menit, lalu coba lagi.")
     inst = await _vast_instance(client, iid)
     status = inst.get("actual_status")
     if status != "running":
@@ -206,6 +207,18 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
     ep = _vast_endpoint(inst)
     if not ep:
         raise RuntimeError("port 8000 instance tidak ketemu")
+    # tunggu program GPU selesai setup (download model ±20 mnt pertama kali)
+    t0 = time.time()
+    while time.time() - t0 < 1800:
+        try:
+            h = await client.get(ep + "/health", timeout=10)
+            if h.status_code == 200:
+                break
+        except Exception:
+            pass
+        await asyncio.sleep(20)
+    else:
+        raise RuntimeError("program GPU tidak siap dalam 30 menit, cek setup.log instance")
     st["last_used"] = time.time()
     _vast_save(st)
     return {"endpoint": ep, "token": st.get("gpu_token", "")}
@@ -241,23 +254,112 @@ async def _vast_watchdog() -> None:
                 continue
             async with httpx.AsyncClient(timeout=30) as client:
                 inst = await _vast_instance(client, iid)
-                if inst.get("actual_status") == "running":
-                    await client.put(f"{VAST_API}/instances/{iid}/", json={"state": "stopped"}, headers=_vast_headers())
-                    log.info("vast %s auto-stop (nganggur %s mnt)", iid, IDLE_MINUTES)
+                if inst.get("actual_status") in ("running", "loading", None):
+                    await client.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
+                    log.info("vast %s auto-destroy (nganggur %s mnt) -> nol total", iid, IDLE_MINUTES)
+            st = _vast_state()
+            st.pop("instance_id", None)
+            st["last_used"] = 0
+            _vast_save(st)
         except Exception as e:
             log.warning("watchdog: %s", e)
 
 
-@app.on_event("startup")
-async def _startup() -> None:
-    asyncio.create_task(_vast_watchdog())
+def _pick_offer(offers: list) -> dict:
+    cands = []
+    for o in offers:
+        if not o.get("rentable"):
+            continue
+        name = str(o.get("gpu_name", ""))
+        if "3090" not in name and "4090" not in name and "A5000" not in name:
+            continue
+        if (o.get("reliability2") or 0) < 0.95:
+            continue
+        if (o.get("cuda_max_good") or 0) < 12.0:
+            continue
+        cands.append(o)
+    if not cands:
+        return {}
+    cands.sort(key=lambda o: o.get("dph_total", 9e9))
+    return cands[0]
+
+
+async def _vast_deploy_job() -> None:
+    if DEPLOYING["active"]:
+        return
+    DEPLOYING.update(active=True, msg="mencari GPU termurah...")
+    try:
+        import secrets
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            q = {"gpu_name": "RTX 3090", "rentable": True, "order": [["dph_total", "asc"]]}
+            import urllib.parse
+
+            r = await client.get(
+                f"{VAST_API}/bundles/?q={urllib.parse.quote_plus(__import__('json').dumps(q))}",
+                headers=_vast_headers(),
+            )
+            offers = (r.json().get("offers") or []) if r.status_code == 200 else []
+            offer = _pick_offer(offers)
+            if not offer:
+                DEPLOYING["msg"] = "tidak ada offer 3090/4090/A5000 yang cocok saat ini"
+                return
+            token = secrets.token_hex(16)
+            onstart = (
+                "curl -sL https://raw.githubusercontent.com/Alifathaya/iptv-1/"
+                "vast/gpu-restore/vast-gpu/setup.sh -o /tmp/setup.sh"
+                " && bash /tmp/setup.sh > /tmp/setup.log 2>&1"
+            )
+            DEPLOYING["msg"] = f"sewa {offer.get('gpu_name')} ${offer.get('dph_total')}/jam..."
+            c = await client.put(
+                f"{VAST_API}/asks/{offer['id']}/",
+                json={
+                    "image": "pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime",
+                    "disk": 40,
+                    "env": f"-e FJ_TOKEN={token} -e FJ_BRANCH=vast/gpu-restore",
+                    "onstart": onstart,
+                },
+                headers=_vast_headers(),
+            )
+            j = c.json()
+            if not j.get("success"):
+                DEPLOYING["msg"] = f"sewa gagal: {j}"
+                return
+            iid = j["new_contract"]
+            _vast_save({"instance_id": iid, "gpu_token": token, "last_used": time.time()})
+            DEPLOYING["msg"] = f"instance {iid} disiapkan (±20 menit pertama kali)..."
+            info = await _vast_ensure_running(client)
+            DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
+            log.info("vast deploy OK %s", iid)
+    except Exception as e:
+        DEPLOYING["msg"] = f"deploy gagal: {e}"
+        log.warning("deploy: %s", e)
+    finally:
+        DEPLOYING["active"] = False
+
+
+@app.post("/api/vast-wake")
+async def vast_wake():
+    if not _vast_key():
+        raise HTTPException(status_code=400, detail="API key Vast belum dipasang di VPS.")
+    st = _vast_state()
+    if st.get("instance_id"):
+        return {"status": "exists", "instance_id": st["instance_id"], "deploy": DEPLOYING["msg"]}
+    asyncio.create_task(_vast_deploy_job())
+    return {"status": "deploying"}
 
 
 @app.get("/api/vast-status")
 def vast_status():
     st = _vast_state()
-    return {"configured": _vast_configured(), "instance_id": st.get("instance_id"),
-            "last_used": st.get("last_used"), "idle_minutes": IDLE_MINUTES}
+    return {"configured": bool(_vast_key()), "instance_id": st.get("instance_id"),
+            "last_used": st.get("last_used"), "idle_minutes": IDLE_MINUTES,
+            "deploying": DEPLOYING["active"], "deploy_msg": DEPLOYING["msg"]}
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    asyncio.create_task(_vast_watchdog())
 
 
 @app.get("/api/health")

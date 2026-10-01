@@ -237,4 +237,30 @@ function showResult(blob) {
   a.classList.remove('hidden');
 }
 
+async function refreshGpu() {
+  try {
+    const r = await fetch('/api/vast-status');
+    const j = await r.json();
+    let t = 'GPU: ';
+    if (!j.configured) t += 'belum dipasang (butuh API key Vast di VPS)';
+    else if (j.deploying) t += 'disiapkan... ' + (j.deploy_msg || '');
+    else if (j.instance_id) t += 'ada (instance ' + j.instance_id + ', auto-destroy bila nganggur 15 mnt)';
+    else t += 'mati total (nol biaya). Tekan Nyalakan GPU bila mau test.';
+    el('gpuState').textContent = t;
+  } catch (e) { el('gpuState').textContent = 'GPU: tidak terjangkau'; }
+}
+
+el('btnWake').addEventListener('click', async function () {
+  el('gpuState').textContent = 'GPU: meminta disiapkan...';
+  try {
+    const r = await fetch('/api/vast-wake', { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || 'gagal');
+    el('gpuState').textContent = 'GPU: disiapkan (±20 menit pertama kali). ' + (j.deploy || '');
+  } catch (e) { el('gpuState').textContent = 'GPU: ' + e.message; }
+  setTimeout(refreshGpu, 5000);
+});
+
 loadCfg();
+refreshGpu();
+setInterval(refreshGpu, 30000);
