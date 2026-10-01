@@ -51,7 +51,8 @@ el('fileInput').addEventListener('change', async function (e) {
   if (!f) return;
   if (f.size > 10 * 1024 * 1024) { alert('Maks 10MB.'); return; }
   const bmp = await createImageBitmap(f);
-  const maxSide = 2048, s = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const maxSide = parseInt((el('maxSide') && el('maxSide').value) || '1024', 10) || 1024;
+  const s = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const w = Math.round(bmp.width * s), h = Math.round(bmp.height * s);
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
