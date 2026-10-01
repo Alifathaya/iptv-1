@@ -15,6 +15,11 @@
         <CheckBox android:id="@+id/cbGen" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="AI generatif" />
     </LinearLayout>
     <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <EditText android:id="@+id/etToken" android:layout_weight="2" android:layout_width="0dp" android:layout_height="wrap_content" android:hint="API key (dari server)" android:inputType="textPassword" />
+        <Button android:id="@+id/btnToken" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="Pakai" />
+    </LinearLayout>
+    <TextView android:id="@+id/tvQuota" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Kuota: -" />
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
         <Button android:id="@+id/btnPick" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="Pilih" />
         <Button android:id="@+id/btnCamera" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="Kamera" />
         <Button android:id="@+id/btnGo" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="Enhance" />

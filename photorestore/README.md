@@ -136,3 +136,17 @@ biaya tercatat estimasi di cost-log (`api_cost`, tagihan pasti di dashboard).
 Android: checkbox generatif (ditolak bila bukan ultra).
 Teruji: provider 6/6, Lena ultra+generatif (local-inpaint 9.5%, cost 0),
 API 8/8, benchmark 30/30 OK.
+
+## Phase 7 — status: JALAN, teruji 2026-10-01
+
+Akun + limit: `POST /auth/register` (key tampil sekali, disimpan sha256),
+header `X-Api-Key` wajib, gratis 5 foto/hari (`FREE_DAILY_LIMIT`), premium
+tanpa batas via `/admin/premium` (ADMIN_TOKEN). Kuota dihitung dari usage
+selesai + job antre/jalan (anti-burst). Worker mencatat usage per job
+(mode, detik, resolusi, gpu, api_cost). Android: kolom API key + sisa kuota.
+PostgreSQL 16 menyimpan users + usage; state eksekusi tetap Redis.
+Teruji: limit 8/8 (401/429/premium/usage), API 8/8, benchmark 30/30 OK.
+
+## Ringkasan phase: 1 dasar jalan · 2 quality+denoise+upscale · 3 wajah ·
+## 4 deblur+ultra+QC · 5 split GPU+fallback+retry · 6 generatif opsional ·
+## 7 limit Free/Premium. Semua teruji di VPS, tanpa placeholder.

@@ -10,6 +10,11 @@ import psutil
 BASE = os.getenv("API_BASE", "http://127.0.0.1:8101")
 SAMPLES = os.path.join(os.path.dirname(__file__), "samples")
 
+reg = httpx.post(BASE + "/auth/register", timeout=30).json()
+H = {"X-Api-Key": reg["api_key"]}
+httpx.post(f"{BASE}/admin/premium/{reg['user_id']}",
+           headers={"X-Admin-Token": os.getenv("ADMIN_TOKEN", "admin-dev-ganti-di-prod")}, timeout=30)
+
 files = sorted(glob.glob(SAMPLES + "/*.jpg"))
 assert len(files) == 30, f"butuh 30 sampel, ada {len(files)} (jalankan make_samples.py)"
 proc = psutil.Process()
@@ -19,10 +24,10 @@ for fp in files:
     t0 = time.time()
     with open(fp, "rb") as f:
         jid = httpx.post(BASE + "/api/v1/enhance", files={"file": ("x.jpg", f, "image/jpeg")},
-                         timeout=60).json()["job_id"]
+                         headers=H, timeout=60).json()["job_id"]
     st = {}
     for _ in range(90):
-        st = httpx.get(f"{BASE}/api/v1/jobs/{jid}", timeout=30).json()
+        st = httpx.get(f"{BASE}/api/v1/jobs/{jid}", headers=H, timeout=30).json()
         if st["status"] in ("completed", "failed"):
             break
         time.sleep(2)
@@ -30,9 +35,9 @@ for fp in files:
     ok = st.get("status") == "completed"
     out = ""
     if ok:
-        r = httpx.get(f"{BASE}/api/v1/result/{jid}", timeout=60)
+        r = httpx.get(f"{BASE}/api/v1/result/{jid}", headers=H, timeout=60)
         out = f"{len(r.content)//1024}KB"
-        httpx.delete(f"{BASE}/api/v1/result/{jid}")
+        httpx.delete(f"{BASE}/api/v1/result/{jid}", headers=H)
     rows.append((os.path.basename(fp), round(dt, 1), ok, out))
     print(os.path.basename(fp), round(dt, 1), "s", "OK" if ok else "GAGAL " + str(st))
 

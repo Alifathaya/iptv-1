@@ -23,7 +23,7 @@ def _progress(pct: int, status: str) -> None:
 
 
 def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: float = 0.8,
-                generative: bool = False, prompt: str = "") -> dict:
+                generative: bool = False, prompt: str = "", user_id: int = 0) -> dict:
     from backend.app import storage  # diimpor di sini agar path RQ fleksibel
 
     t0 = time.time()
@@ -53,11 +53,19 @@ def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: 
     dt = round(time.time() - t0, 2)
     h1, w1 = img.shape[:2]
     gpu = any("remote" in str(v.get("backend", "")) for v in notes.values() if isinstance(v, dict))
+    api_cost = round(ctx.get("api_cost", 0.0), 4)
+    if user_id:
+        try:
+            from backend.app import db as _db
+
+            _db.log_usage(user_id, job_id, mode, dt, w1, h1, gpu, api_cost)
+        except Exception as e:
+            print("gagal catat usage (job tetap valid):", e)
     entry = {"job_id": job_id, "mode": mode, "strength": strength,
              "stages": used, "stage_notes": notes, "seconds": dt,
              "in_wh": [w0, h0], "out_wh": [w1, h1],
              "quality": ctx.get("quality"), "gpu": gpu,
-             "api_cost": round(ctx.get("api_cost", 0.0), 4)}
+             "api_cost": api_cost}
     os.makedirs(os.path.dirname(COST_LOG), exist_ok=True)
     with open(COST_LOG, "a") as f:
         f.write(json.dumps(entry) + "\n")

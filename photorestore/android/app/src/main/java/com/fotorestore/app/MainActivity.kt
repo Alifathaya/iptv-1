@@ -39,7 +39,13 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         setContentView(R.layout.activity_main)
-        api = Api.create(BuildConfig.API_BASE)
+        val prefs = getSharedPreferences("fr", MODE_PRIVATE)
+        api = Api.create(BuildConfig.API_BASE) { prefs.getString("token", "") ?: "" }
+        findViewById<EditText>(R.id.etToken).setText(prefs.getString("token", ""))
+        findViewById<Button>(R.id.btnToken).setOnClickListener {
+            prefs.edit().putString("token", findViewById<EditText>(R.id.etToken).text.toString().trim()).apply()
+            refreshQuota()
+        }
         imgBefore = findViewById(R.id.imgBefore); imgAfter = findViewById(R.id.imgAfter)
         val seek: SeekBar = findViewById(R.id.seek)
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -57,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnSave).setOnClickListener { saveToGallery() }
         findViewById<Button>(R.id.btnShare).setOnClickListener { share() }
         findViewById<Button>(R.id.btnDelete).setOnClickListener { deleteRemote() }
+        refreshQuota()
     }
 
     private fun applyClip(p: Int) {
@@ -68,6 +75,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun setStatus(t: String) { findViewById<TextView>(R.id.tvStatus).text = t }
     private fun setProg(p: Int) { findViewById<ProgressBar>(R.id.prog).progress = p }
+
+    private fun refreshQuota() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val m = api.me()
+                val q = if (m.premium) "Premium (tanpa batas)" else "Gratis: ${m.quota.used}/${m.quota.limit} hari ini"
+                withContext(Dispatchers.Main) { findViewById<TextView>(R.id.tvQuota).text = "Kuota: $q" }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { findViewById<TextView>(R.id.tvQuota).text = "Kuota: butuh API key" }
+            }
+        }
+    }
 
     private fun uriToFile(uri: Uri): File {
         val out = File.createTempFile("up", ".jpg", cacheDir)
