@@ -84,7 +84,9 @@ class MainActivity : AppCompatActivity() {
                 val part = MultipartBody.Part.createFormData("file", f.name, f.asRequestBody("image/*".toMediaType()))
                 val mode = findViewById<Spinner>(R.id.spMode).selectedItem.toString()
                 val fid = 0.7f + findViewById<SeekBar>(R.id.seekFid).progress * 0.01f
-                val en = api.enhance(part, mode.toRequestBody(), "medium".toRequestBody(), fid.toString().toRequestBody())
+                val gen = findViewById<CheckBox>(R.id.cbGen).isChecked
+                if (gen && mode != "ultra") { withContext(Dispatchers.Main) { setStatus("Generatif hanya untuk mode ultra") }; return@launch }
+                val en = api.enhance(part, mode.toRequestBody(), "medium".toRequestBody(), fid.toString().toRequestBody(), gen.toString().toRequestBody())
                 jobId = en.job_id
                 while (true) {
                     delay(2000)

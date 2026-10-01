@@ -122,3 +122,17 @@ Cost-log mencatat `gpu:true/false` + nama backend tiap tahap.
 PostgreSQL ditunda ke Phase 7 (baru butuh saat ada akun/limit); state job
 di Redis terdokumentasi dan cukup untuk Phase 5.
 Teruji: stub GPU 6/6 (remote 2x, fallback 3 tahap), API 8/8, bench 30/30 OK.
+
+## Phase 6 — status: JALAN, teruji 2026-10-01
+
+Lapisan generatif **opsional & nonaktif default**: tahap `GenerativeEnhance`
+(hanya jalan bila `generative=true` + mode ultra) di belakang interface
+`GenerativeEnhancer.process(image, prompt)` dengan abstraksi
+`AIProvider → LocalAIProvider | OpenAIProvider`. Pipeline normal tanpa API.
+Lokal: inpaint goresan Telea (blackhat mask, catat damaged_pct — bukan difusi,
+jujur di log). OpenAI: `images/edits` (gpt-image-1 default), hanya bila
+`OPENAI_API_KEY` ada di server (tak pernah di APK); gagal → fallback lokal,
+biaya tercatat estimasi di cost-log (`api_cost`, tagihan pasti di dashboard).
+Android: checkbox generatif (ditolak bila bukan ultra).
+Teruji: provider 6/6, Lena ultra+generatif (local-inpaint 9.5%, cost 0),
+API 8/8, benchmark 30/30 OK.

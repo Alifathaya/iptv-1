@@ -12,6 +12,7 @@
     <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
         <Spinner android:id="@+id/spMode" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:entries="@array/modes" />
         <SeekBar android:id="@+id/seekFid" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:max="20" android:progress="10" />
+        <CheckBox android:id="@+id/cbGen" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="AI generatif" />
     </LinearLayout>
     <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
         <Button android:id="@+id/btnPick" android:layout_weight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:text="Pilih" />

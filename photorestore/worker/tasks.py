@@ -22,7 +22,8 @@ def _progress(pct: int, status: str) -> None:
         pass
 
 
-def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: float = 0.8) -> dict:
+def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: float = 0.8,
+                generative: bool = False, prompt: str = "") -> dict:
     from backend.app import storage  # diimpor di sini agar path RQ fleksibel
 
     t0 = time.time()
@@ -31,7 +32,8 @@ def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: 
     if img is None:
         raise ValueError("gagal baca gambar sumber")
     h0, w0 = img.shape[:2]
-    ctx = {"strength": strength, "fidelity": fidelity, "in_wh": (w0, h0)}
+    ctx = {"strength": strength, "fidelity": fidelity, "in_wh": (w0, h0),
+           "generative": bool(generative) and mode == "ultra", "prompt": prompt or ""}
     if mode == "ultra":
         # ultra: deblur minimal medium + upscale paksa 4x (maksimum resolusi)
         ctx["deblur_strength"] = {"light": "medium"}.get(strength, strength)
@@ -54,7 +56,8 @@ def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: 
     entry = {"job_id": job_id, "mode": mode, "strength": strength,
              "stages": used, "stage_notes": notes, "seconds": dt,
              "in_wh": [w0, h0], "out_wh": [w1, h1],
-             "quality": ctx.get("quality"), "gpu": gpu, "api_cost": 0.0}
+             "quality": ctx.get("quality"), "gpu": gpu,
+             "api_cost": round(ctx.get("api_cost", 0.0), 4)}
     os.makedirs(os.path.dirname(COST_LOG), exist_ok=True)
     with open(COST_LOG, "a") as f:
         f.write(json.dumps(entry) + "\n")

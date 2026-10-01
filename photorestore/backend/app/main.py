@@ -16,7 +16,8 @@ app = FastAPI(title=config.APP_NAME)
 
 @app.post(config.API_PREFIX + "/enhance")
 async def enhance(file: UploadFile = File(...), mode: str = Form("basic"), strength: str = Form("medium"),
-                  fidelity: float = Form(0.8)):
+                  fidelity: float = Form(0.8), generative: bool = Form(False),
+                  prompt: str = Form("")):
     if mode not in ("basic", "hd", "ultra"):
         raise HTTPException(status_code=400, detail=f"mode {mode} tidak dikenal (basic/hd/ultra)")
     if strength not in ("light", "medium", "strong"):
@@ -25,8 +26,8 @@ async def enhance(file: UploadFile = File(...), mode: str = Form("basic"), stren
         raise HTTPException(status_code=400, detail="fidelity: 0.7-0.9")
     raw = validate_upload(file)
     job_id, src = storage.save_original(raw, file.content_type or "image/jpeg")
-    jobs.enqueue_enhance(job_id, src, mode, strength, fidelity)
-    log.info("job %s queued mode=%s strength=%s", job_id, mode, strength)
+    jobs.enqueue_enhance(job_id, src, mode, strength, fidelity, generative, prompt[:500])
+    log.info("job %s queued mode=%s strength=%s generative=%s", job_id, mode, strength, generative)
     return {"job_id": job_id, "status": "queued"}
 
 

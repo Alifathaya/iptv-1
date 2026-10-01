@@ -5,6 +5,7 @@ from .deblur import DeblurProcessor
 from .denoise import Denoise
 from .face_detect import FaceDetect
 from .face_restore import FaceRestore
+from .generative import GenerativeEnhance
 from .qc import QualityGate
 from .quality import QualityAnalysis
 from .upscale import Upscale
@@ -14,5 +15,6 @@ PIPELINES = {
     "hd": [QualityAnalysis(), Denoise(), DeblurProcessor(), BasicEnhance(),
            FaceDetect(), FaceRestore(), Upscale(), ColorEnhance(), QualityGate()],
     "ultra": [QualityAnalysis(), Denoise(), DeblurProcessor(), BasicEnhance(),
-              FaceDetect(), FaceRestore(), Upscale(), ColorEnhance(), QualityGate()],
+              FaceDetect(), FaceRestore(), Upscale(), ColorEnhance(),
+              GenerativeEnhance(), QualityGate()],
 }
