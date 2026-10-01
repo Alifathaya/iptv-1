@@ -42,26 +42,26 @@ def _out(img) -> str:
     return "data:image/png;base64," + base64.b64encode(bytes(buf)).decode()
 
 
-_gfpgan = None
-_esrgan = None
+_gfpgan_model = None
+_esrgan_model = None
 
 
 def _gfpgan():
-    global _gfpgan
-    if _gfpgan is None:
+    global _gfpgan_model
+    if _gfpgan_model is None:
         import torch
         from gfpgan import GFPGANer
 
         if not torch.cuda.is_available():
             raise RuntimeError("butuh CUDA")
-        _gfpgan = GFPGANer(model_path=os.path.join(WDIR, "GFPGANv1.4.pth"), upscale=1,
+        _gfpgan_model = GFPGANer(model_path=os.path.join(WDIR, "GFPGANv1.4.pth"), upscale=1,
                            arch="clean", channel_multiplier=2, bg_upsampler=None)
-    return _gfpgan
+    return _gfpgan_model
 
 
 def _esrgan():
-    global _esrgan
-    if _esrgan is None:
+    global _esrgan_model
+    if _esrgan_model is None:
         import torch
         from basicsr.utils.download_util import load_file_from_url
         from realesrgan import RealESRGANer
@@ -75,12 +75,12 @@ def _esrgan():
         if not os.path.exists(path):
             path = load_file_from_url(
                 "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", WDIR)
-        _esrgan = RealESRGANer(
+        _esrgan_model = RealESRGANer(
             scale=4, model_path=path,
             model=RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                           num_block=23, num_grow_ch=32, scale=4),
             tile=400, tile_pad=10, pre_pad=0, half=half)
-    return _esrgan
+    return _esrgan_model
 
 
 @app.get("/health")
