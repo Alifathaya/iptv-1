@@ -1,7 +1,7 @@
 """Job via RQ: enqueue + status (queued/processing/completed/failed) + progress 0-100."""
 from redis import Redis
 from rq import Queue
-from rq.job import Job
+from rq.job import Job, Retry
 
 from . import config
 
@@ -24,6 +24,7 @@ def enqueue_enhance(job_id: str, src_path: str, mode: str, strength: str, fideli
         args=(job_id, src_path, mode, strength, fidelity),
         job_id=job_id,
         job_timeout=config.JOB_TIMEOUT,
+        retry=Retry(max=2, interval=[120, 600]),  # retry otomatis utk gagal transient
         meta={"progress": 0, "status": "queued", "mode": mode},
     )
     return job.id

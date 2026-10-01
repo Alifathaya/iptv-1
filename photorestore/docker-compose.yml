@@ -19,7 +19,10 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       STORAGE_ROOT: /srv/storage
-    command: bash -c "pip install redis rq opencv-python-headless pillow numpy && rq worker --path /srv/photorestore --path /srv/photorestore/worker fotorestore"
+    command: bash -c "pip install redis rq opencv-python-headless pillow numpy httpx && rq worker --path /srv/photorestore --path /srv/photorestore/worker fotorestore"
     depends_on: [redis]
+  # Phase 5: worker GPU berjalan di Vast.ai dari image ghcr.io (lihat vast-gpu/),
+  # backend Contabo memanggilnya via GPU_WORKER_URL. Contoh override lokal:
+  #   GPU_WORKER_URL=http://gpu:8000 GPU_WORKER_TOKEN=xxx docker compose up
 volumes:
   fr-storage:

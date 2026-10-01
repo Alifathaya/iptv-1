@@ -68,5 +68,12 @@ class DeblurProcessor(Stage):
         strength = ctx.get("deblur_strength", ctx.get("strength", "medium"))
         if strength not in ("light", "medium", "strong"):
             strength = "medium"
+        try:
+            from .remote import enabled, run_stage
+            if enabled():
+                out = run_stage("deblur", image, {"strength": strength})
+                return StageResult(out, {"backend": "remote", "strength": strength})
+        except Exception as e:
+            print("remote deblur gagal, fallback lokal:", e)
         out = self.process(image, strength)
         return StageResult(out, {"backend": self.backend.name, "strength": strength})

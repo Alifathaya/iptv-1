@@ -72,6 +72,14 @@ class Upscale(Stage):
 
     def run(self, image: np.ndarray, ctx: dict) -> StageResult:
         scale = ctx.get("force_scale") or pick_scale(max(image.shape[:2]))
+        try:
+            from .remote import enabled, run_stage
+            if enabled():
+                out = run_stage("upscale", image, {"scale": scale})
+                ctx["expected_scale"] = scale
+                return StageResult(out, {"backend": "realesrgan-remote", "scale": scale})
+        except Exception as e:
+            print("remote upscale gagal, fallback lokal:", e)
         out = self.backend.upscale(image, scale)
         ctx["expected_scale"] = scale
         return StageResult(out, {"backend": self.backend.name, "scale": scale})

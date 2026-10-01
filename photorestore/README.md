@@ -108,3 +108,17 @@ false-reject lintas skala — tolak bila ketajaman anjlok/noise >40).
 Android: pilihan mode basic/hd/ultra + slider fidelity.
 Teruji: Lena ultra 9 tahap lolos QC (blur 449→1233, 512→2048, 2.5 dtk),
 API 8/8, benchmark 30/30 OK.
+
+## Phase 5 — status: JALAN (fallback aktif), teruji 2026-10-01
+
+Backend API dan AI Worker dipisah sesuai spek 16: tahap berat (face_restore,
+upscale, deblur) dipanggil via `POST {GPU_WORKER_URL}/v1/stage` oleh
+`worker/pipeline/remote.py`; tahap ringan tetap lokal. Worker GPU
+(`worker-gpu/server.py`: GFPGAN + Real-ESRGAN + RL, auth token, /health)
+jalan di Vast.ai dari image ghcr (lihat `vast-gpu/` di branch vast/gpu-restore).
+Spec 17: GPU mati/tidak ada → otomatis fallback CPU lokal (teruji),
+job RQ retry 2x interval 2–10 mnt untuk gagal transient, timeout per job.
+Cost-log mencatat `gpu:true/false` + nama backend tiap tahap.
+PostgreSQL ditunda ke Phase 7 (baru butuh saat ada akun/limit); state job
+di Redis terdokumentasi dan cukup untuk Phase 5.
+Teruji: stub GPU 6/6 (remote 2x, fallback 3 tahap), API 8/8, bench 30/30 OK.

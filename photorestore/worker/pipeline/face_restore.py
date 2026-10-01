@@ -81,10 +81,23 @@ class FaceRestore(Stage):
     def run(self, image: np.ndarray, ctx: dict) -> StageResult:
         fidelity = float(ctx.get("fidelity", 0.8))
         fidelity = max(0.7, min(0.9, fidelity))
+        faces = ctx.get("faces", [])
+        try:
+            from .remote import enabled, run_stage
+            if enabled() and faces:
+                out = run_stage("face_restore", image,
+                                {"faces": faces, "fidelity": fidelity})
+                return StageResult(out, {"backend": "gfpgan-remote",
+                                         "restored": len(faces), "fidelity": fidelity})
+        except Exception as e:
+            print("remote face_restore gagal, fallback lokal:", e)
+        return self._local(image, faces, fidelity)
+
+    def _local(self, image, faces, fidelity):
         h, w = image.shape[:2]
         out = image
         done, skipped = 0, 0
-        for f in ctx.get("faces", []):
+        for f in faces:
             x, y, bw, bh = _expand(f["box"], w, h)
             crop = out[y:y + bh, x:x + bw].copy()
             if crop.size == 0:

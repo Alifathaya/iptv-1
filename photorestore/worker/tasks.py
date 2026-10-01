@@ -50,10 +50,11 @@ def run_enhance(job_id: str, src_path: str, mode: str, strength: str, fidelity: 
     cv2.imwrite(out_path, img, [cv2.IMWRITE_PNG_COMPRESSION, 3])
     dt = round(time.time() - t0, 2)
     h1, w1 = img.shape[:2]
+    gpu = any("remote" in str(v.get("backend", "")) for v in notes.values() if isinstance(v, dict))
     entry = {"job_id": job_id, "mode": mode, "strength": strength,
              "stages": used, "stage_notes": notes, "seconds": dt,
              "in_wh": [w0, h0], "out_wh": [w1, h1],
-             "quality": ctx.get("quality"), "gpu": False, "api_cost": 0.0}
+             "quality": ctx.get("quality"), "gpu": gpu, "api_cost": 0.0}
     os.makedirs(os.path.dirname(COST_LOG), exist_ok=True)
     with open(COST_LOG, "a") as f:
         f.write(json.dumps(entry) + "\n")
