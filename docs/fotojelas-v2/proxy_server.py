@@ -17,6 +17,7 @@ log = logging.getLogger("fjv2")
 app = FastAPI(title="Foto Jelas v2 proxy")
 QUEUE = "https://queue.fal.run"
 VAST_API = "https://console.vast.ai/api/v0"
+VAST_API_V1 = "https://console.vast.ai/api/v1"
 VAST_KEY_FILE = os.path.expanduser("~/.vast-api-key")
 VAST_STATE_FILE = "/opt/fotojelas-proxy/vast.json"
 IDLE_MINUTES = 15  # destroy GPU kalau nganggur selama ini (nol total)
@@ -166,7 +167,7 @@ def _vast_save(state: dict) -> None:
 
 
 async def _vast_instance(client: httpx.AsyncClient, iid: int) -> dict:
-    r = await client.get(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
+    r = await client.get(f"{VAST_API_V1}/instances/{iid}/", headers=_vast_headers())
     r.raise_for_status()
     insts = r.json().get("instances", {})
     return insts.get(str(iid), {}) if isinstance(insts, dict) else {}
@@ -190,7 +191,7 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
     status = inst.get("actual_status")
     if status != "running":
         log.info("vast %s status=%s -> start", iid, status)
-        r = await client.put(f"{VAST_API}/instances/{iid}/", json={"state": "running"}, headers=_vast_headers())
+        r = await client.put(f"{VAST_API_V1}/instances/{iid}/", json={"state": "running"}, headers=_vast_headers())
         if not r.json().get("success", True):
             raise RuntimeError(f"start gagal: {r.text[:200]}")
         t0 = time.time()
@@ -255,7 +256,7 @@ async def _vast_watchdog() -> None:
             async with httpx.AsyncClient(timeout=30) as client:
                 inst = await _vast_instance(client, iid)
                 if inst.get("actual_status") in ("running", "loading", None):
-                    await client.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
+                    await client.delete(f"{VAST_API_V1}/instances/{iid}/", headers=_vast_headers())
                     log.info("vast %s auto-destroy (nganggur %s mnt) -> nol total", iid, IDLE_MINUTES)
             st = _vast_state()
             st.pop("instance_id", None)
