@@ -1,7 +1,7 @@
 # Foto Jelas GPU — image jadi (program + model dibungkus, nyala ±3 menit)
-# torch 2.2.x: basicsr butuh torchvision.transforms.functional_tensor
-# (hilang di torchvision 0.18+, jadi jangan pakai base 2.4)
-FROM pytorch/pytorch:2.2.2-cuda12.1-cudnn8-runtime
+# torch 2.1.x: basicsr butuh torchvision.transforms.functional_tensor
+# (modul itu dibuang di torchvision 0.17+, jadi jangan pakai base 2.2/2.4)
+FROM pytorch/pytorch:2.1.2-cuda12.1-cudnn8-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
 RUN apt-get update -qq \
@@ -10,9 +10,9 @@ RUN apt-get update -qq \
 
 RUN python3 -m pip install -q --upgrade pip \
  && python3 -m pip install -q --no-cache-dir "numpy<2" \
- && python3 -m pip install -q --no-cache-dir \
       fastapi "uvicorn[standard]" python-multipart opencv-python-headless \
-      basicsr facexlib gfpgan realesrgan
+      basicsr facexlib gfpgan realesrgan \
+ && python3 -c "import numpy, torch; assert numpy.__version__.startswith('1.'), numpy.__version__; print('NUMPY_TORCH_OK', numpy.__version__)"
 
 # bakar weights ke dalam image (tidak download tiap nyala)
 RUN mkdir -p /opt/restore/weights && python3 -c \
