@@ -107,47 +107,52 @@ function blobToDataURL(blob) {
   });
 }
 
-async function replicateRun(model, input, label, onp) {
-  const token = el('token').value.trim() || localStorage.getItem('fj2.token') || '';
-  if (!token) throw new Error('need-token');
-  if (onp) onp(5, label + ': antre...');
-  let r;
-  try {
-    r = await fetch('https://api.replicate.com/v1/models/' + model + '/predictions', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: input })
-    });
-  } catch (netErr) {
-    throw new Error('Jaringan/CORS: browser gagal menghubungi api.replicate.com (' + netErr.message + '). Coba refresh, ganti browser/HP, atau kabari saya agar saya pasang backend proxy.');
-  }
-  if (!r.ok) {
-    const t = await r.text();
-    let hint = '';
-    if (r.status === 401) hint = ' — token salah/kedaluwarsa. Ambil ulang di replicate.com/account/api-tokens lalu Simpan.';
-    else if (r.status === 402) hint = ' — kredit habis. Cek billing Replicate.';
-    else if (r.status === 422) hint = ' — input tidak cocok untuk model ini. Screenshot pesan ini untuk saya.';
-    throw new Error('Replicate ' + r.status + hint + ' Detail: ' + t.slice(0, 500));
-  }
-  let p = await r.json();
-  const t0 = Date.now();
-  while (p.status === 'starting' || p.status === 'processing') {
-    if (Date.now() - t0 > 5 * 60 * 1000) throw new Error('Timeout 5 menit.');
-    await new Promise(function (x) { setTimeout(x, 2500); });
-    if (onp) onp(40, label + ': ' + p.status + '...');
-    const g = await fetch('https://api.replicate.com/v1/predictions/' + p.id, {
-      headers: { Authorization: 'Bearer ' + token }
-    }).catch(function (netErr) { throw new Error('Jaringan putus saat menunggu hasil (' + netErr.message + '). Coba lagi.'); });
-    p = await g.json();
-  }
-  if (p.status !== 'succeeded') throw new Error('Gagal: ' + (p.error || p.status));
-  const out = Array.isArray(p.output) ? p.output[p.output.length - 1] : p.output;
-  return out;
+async function b64ToBlob(b64) {
+  const res = await fetch(b64);
+  return await res.blob();
 }
 
 async function urlToBlob(u) {
   const r = await fetch(u);
   return await r.blob();
+}
+
+// Semua panggilan Replicate lewat proxy VPS (same-origin) agar bebas CORS.
+// Token dikirim per-request via header, tidak disimpan di server.
+async function runViaProxy(body, token, onp) {
+  const ctrl = new AbortController();
+  const t = setTimeout(function () { ctrl.abort(); }, 8 * 60 * 1000);
+  // progress palsu selama server bekerja (poll asli ada di server)
+  let p = 5;
+  const tick = setInterval(function () {
+    p = Math.min(90, p + 2);
+    if (onp) onp(p, 'AI bekerja di server...');
+  }, 3000);
+  try {
+    const r = await fetch('/api/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Replicate-Token': token },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    });
+    if (!r.ok) {
+      let detail = '';
+      try { detail = (await r.json()).detail || ''; } catch (e) { detail = await r.text(); }
+      let hint = '';
+      if (r.status === 400 && String(detail).indexOf('Token') >= 0) hint = 'Isi API token Replicate dulu lalu Simpan.';
+      throw new Error('Server ' + r.status + (hint ? ' — ' + hint : '') + ' ' + String(detail).slice(0, 500));
+    }
+    const j = await r.json();
+    if (onp) onp(92, 'Unduh hasil...');
+    if (j.image_b64) return await b64ToBlob(j.image_b64);
+    return await urlToBlob(j.image_url);
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Timeout 8 menit. Coba foto lebih kecil.');
+    throw e;
+  } finally {
+    clearTimeout(t);
+    clearInterval(tick);
+  }
 }
 
 // demo lokal: kontras ringan agar UI bisa dicek tanpa token
@@ -186,48 +191,31 @@ el('btnRun').addEventListener('click', async function () {
   state.busy = true;
   setProg(2);
   try {
+    const token = el('token').value.trim() || localStorage.getItem('fj2.token') || '';
+    if (!token) {
+      alert('Isi API token Replicate dulu (gratis trial), atau pakai Coba tanpa token untuk demo.');
+      setStatus('Butuh token.');
+      return;
+    }
     const extra = extraJSON();
     const fid = parseFloat(el('fidelity').value);
     const dataURL = await blobToDataURL(state.beforeBlob);
     const onp = function (p, m) { setProg(p); setStatus(m); };
-    let curURL = null;
-    if (state.mode === 'enhance') {
-      const input = Object.assign(
-        { image: dataURL, face_upsample: true, background_enhance: true, codeformer_fidelity: fid, upscale: 2 },
-        extra
-      );
-      curURL = await replicateRun(el('mEnh').value.trim() || DEF.mEnh, input, 'Perjelas', onp);
-    } else if (state.mode === 'colorize') {
-      const input = Object.assign({ image: dataURL }, extra);
-      curURL = await replicateRun(el('mCol').value.trim() || DEF.mCol, input, 'Warnai', onp);
-    } else {
-      const inCol = Object.assign({ image: dataURL }, extra.colorize || {});
-      curURL = await replicateRun(
-        el('mCol').value.trim() || DEF.mCol, inCol, 'Langkah 1/2 warnai',
-        function (p) { onp(p / 2, 'Langkah 1/2 warnai...'); }
-      );
-      const inEnh = Object.assign(
-        { image: curURL, face_upsample: true, background_enhance: true, codeformer_fidelity: fid, upscale: 2 },
-        extra.enhance || {}
-      );
-      curURL = await replicateRun(
-        el('mEnh').value.trim() || DEF.mEnh, inEnh, 'Langkah 2/2 tajamkan',
-        function (p) { onp(50 + p / 2, 'Langkah 2/2 tajamkan...'); }
-      );
-    }
-    onp(92, 'Unduh hasil...');
-    const blob = await urlToBlob(curURL);
+    onp(3, state.mode === 'colorize' ? 'Mewarnai...' : state.mode === 'full' ? 'Full restore...' : 'Memperjelas...');
+    const blob = await runViaProxy({
+      mode: state.mode,
+      image: dataURL,
+      fidelity: fid,
+      model_enhance: el('mEnh').value.trim() || DEF.mEnh,
+      model_colorize: el('mCol').value.trim() || DEF.mCol,
+      extra: extra
+    }, token, onp);
     showResult(blob);
     onp(100, 'Selesai.');
   } catch (e) {
-    if (String(e.message) === 'need-token') {
-      alert('Isi API token Replicate dulu (gratis trial), atau pakai Coba tanpa token untuk demo.');
-      setStatus('Butuh token.');
-    } else {
-      console.error(e);
-      alert(e.message);
-      setStatus('Error: ' + e.message);
-    }
+    console.error(e);
+    alert(e.message);
+    setStatus('Error: ' + e.message);
   } finally {
     state.busy = false;
     doneProg();
