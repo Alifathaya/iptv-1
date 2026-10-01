@@ -1,5 +1,7 @@
 # Foto Jelas GPU — image jadi (program + model dibungkus, nyala ±3 menit)
-FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
+# torch 2.2.x: basicsr butuh torchvision.transforms.functional_tensor
+# (hilang di torchvision 0.18+, jadi jangan pakai base 2.4)
+FROM pytorch/pytorch:2.2.2-cuda12.1-cudnn8-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
 RUN apt-get update -qq \
