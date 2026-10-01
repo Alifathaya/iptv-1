@@ -1,0 +1,20 @@
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#070b14;color:#e8eefc}
+.app{max-width:720px;margin:0 auto;padding:20px}
+header h1{margin:8px 0}header h1 span{color:#7dd3fc}.sub{color:#93a0bb;margin-top:0}
+.tabs{display:flex;gap:8px;margin:12px 0}.tab{flex:1;padding:12px;border-radius:12px;border:1px solid #26314d;background:#0d1526;color:#e8eefc;cursor:pointer;font-weight:700}.tab.active{background:#0ea5e9;border-color:#0ea5e9;color:#04121f}
+.modedesc{color:#93a0bb;min-height:24px}
+.card{background:#0d1526;border:1px solid #26314d;border-radius:16px;padding:16px;margin:12px 0}
+.hidden{display:none!important}
+#btnPick,#btnRun,#btnSave{background:#0ea5e9;border:0;border-radius:10px;padding:12px 18px;font-weight:800;cursor:pointer;color:#04121f}
+.ghost{background:transparent;border:1px solid #26314d;color:#e8eefc;border-radius:10px;padding:10px 14px;cursor:pointer}
+#btnDl{background:#22c55e;border-radius:10px;padding:10px 14px;color:#04121f;font-weight:800;text-decoration:none}
+.compare{position:relative;overflow:hidden;border-radius:12px;user-select:none;touch-action:none}
+.compare img{display:block;width:100%}.compare #imgAfter{position:absolute;inset:0;clip-path:inset(0 50% 0 0)}
+.handle{position:absolute;top:0;bottom:0;left:50%;width:3px;background:#fff}
+.labels{display:flex;justify-content:space-between;color:#93a0bb;font-size:13px;margin:6px 2px}
+.row{display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap}
+input[type=text],input[type=password],input:not([type]),textarea{width:100%;background:#070b14;border:1px solid #26314d;color:#e8eefc;border-radius:10px;padding:10px}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}@media(max-width:640px){.grid{grid-template-columns:1fr}}
+.progress{background:#070b14;border-radius:99px;height:10px;overflow:hidden}.bar{height:100%;width:0;background:#0ea5e9}
+.status{color:#93a0bb;min-height:20px}details summary{cursor:pointer;font-weight:700}.hint{color:#93a0bb;font-size:13px}
+footer{color:#5b6b8c;font-size:13px;text-align:center}

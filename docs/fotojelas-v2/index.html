@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Foto Jelas Pro v2 — Perjelas & Warnai</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+<header>
+<h1>Foto Jelas <span>Pro v2</span></h1>
+<p class="sub">Perjelas foto buram + warnai foto lama hitam-putih (AI)</p>
+</header>
+<div class="tabs">
+<button class="tab active" data-mode="enhance">Perjelas</button>
+<button class="tab" data-mode="colorize">Warnai B&amp;W</button>
+<button class="tab" data-mode="full">Full Restore</button>
+</div>
+<p class="modedesc" id="modeDesc">Foto buram / low-res → tajam natural (CodeFormer + ESRGAN).</p>
+<div class="card" id="dropZone">
+<h2>Unggah foto</h2>
+<p>JPG, PNG, WebP — maks 10MB. Token hanya tersimpan di browser kamu.</p>
+<button id="btnPick">Pilih foto</button>
+<input type="file" id="fileInput" accept="image/*" hidden>
+</div>
+<div class="card hidden" id="work">
+<div class="compare" id="compare">
+<img id="imgBefore" alt="sebelum">
+<img id="imgAfter" alt="sesudah">
+<div class="handle" id="handle"></div>
+</div>
+<div class="labels"><span>Sebelum</span><span>geser</span><span>Sesudah</span></div>
+<div class="row">
+<label>Fidelity wajah <span id="fidVal">0.7</span></label>
+<input type="range" id="fidelity" min="0" max="1" step="0.05" value="0.7">
+</div>
+<div class="row">
+<button id="btnRun">Enhance</button>
+<a id="btnDl" class="hidden" download="foto-jelas-v2.png">Unduh hasil</a>
+<button id="btnReset" class="ghost">Foto lain</button>
+</div>
+<div class="progress hidden" id="prog"><div class="bar" id="bar"></div></div>
+<p class="status" id="status"></p>
+</div>
+<details class="card">
+<summary>Pengaturan API (Replicate — gratis trial)</summary>
+<label>API token (replicate.com/account/api-tokens)</label>
+<input type="password" id="token" placeholder="r8_..." autocomplete="off">
+<div class="grid">
+<div><label>Model enhance</label><input id="mEnh" value="sczhou/codeformer"></div>
+<div><label>Model warna</label><input id="mCol" value="piddnad/ddcolor"></div>
+<div><label>Model upscale umum</label><input id="mUps" value="nightmareai/real-esrgan"></div>
+</div>
+<label>JSON tambahan (opsional, override input model)</label>
+<textarea id="extra" rows="3" placeholder='{}'></textarea>
+<div class="row">
+<button id="btnSave">Simpan</button>
+<button id="btnDemo" class="ghost">Coba tanpa token (demo lokal)</button>
+</div>
+<p class="hint">Estimasi: DDColor ~0.001 USD, CodeFormer ~0.003 USD, ESRGAN 0.005-0.03 USD/foto. Produksi nanti token pindah ke backend proxy agar tidak dicuri dari APK.</p>
+</details>
+<footer><p>Web preview v2 — cocok baru kita bungkus APK. Tanpa token = demo lokal terbatas.</p></footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
