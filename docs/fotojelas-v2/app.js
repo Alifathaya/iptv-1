@@ -111,14 +111,23 @@ async function replicateRun(model, input, label, onp) {
   const token = el('token').value.trim() || localStorage.getItem('fj2.token') || '';
   if (!token) throw new Error('need-token');
   if (onp) onp(5, label + ': antre...');
-  const r = await fetch('https://api.replicate.com/v1/models/' + model + '/predictions', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input: input })
-  });
+  let r;
+  try {
+    r = await fetch('https://api.replicate.com/v1/models/' + model + '/predictions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: input })
+    });
+  } catch (netErr) {
+    throw new Error('Jaringan/CORS: browser gagal menghubungi api.replicate.com (' + netErr.message + '). Coba refresh, ganti browser/HP, atau kabari saya agar saya pasang backend proxy.');
+  }
   if (!r.ok) {
     const t = await r.text();
-    throw new Error('Replicate ' + r.status + ': ' + t.slice(0, 200));
+    let hint = '';
+    if (r.status === 401) hint = ' — token salah/kedaluwarsa. Ambil ulang di replicate.com/account/api-tokens lalu Simpan.';
+    else if (r.status === 402) hint = ' — kredit habis. Cek billing Replicate.';
+    else if (r.status === 422) hint = ' — input tidak cocok untuk model ini. Screenshot pesan ini untuk saya.';
+    throw new Error('Replicate ' + r.status + hint + ' Detail: ' + t.slice(0, 500));
   }
   let p = await r.json();
   const t0 = Date.now();
@@ -128,7 +137,7 @@ async function replicateRun(model, input, label, onp) {
     if (onp) onp(40, label + ': ' + p.status + '...');
     const g = await fetch('https://api.replicate.com/v1/predictions/' + p.id, {
       headers: { Authorization: 'Bearer ' + token }
-    });
+    }).catch(function (netErr) { throw new Error('Jaringan putus saat menunggu hasil (' + netErr.message + '). Coba lagi.'); });
     p = await g.json();
   }
   if (p.status !== 'succeeded') throw new Error('Gagal: ' + (p.error || p.status));
