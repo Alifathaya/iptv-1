@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+storage/original/
+storage/processed/
+storage/temp/
+storage/cost-log.jsonl
+tests/samples/
+models/weights/
