@@ -225,6 +225,18 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
     return {"endpoint": ep, "token": st.get("gpu_token", "")}
 
 
+async def _vast_destroy(client: httpx.AsyncClient, iid: int) -> None:
+    try:
+        await client.delete(f"{VAST_API_V1}/instances/{iid}/", headers=_vast_headers())
+        log.info("vast %s destroyed (langsung sehabis 1 foto)", iid)
+    except Exception as e:
+        log.warning("destroy %s gagal: %s", iid, e)
+    st = _vast_state()
+    st.pop("instance_id", None)
+    st["last_used"] = 0
+    _vast_save(st)
+
+
 async def _vast_enhance(client: httpx.AsyncClient, image: str, fidelity: float, upscale: int) -> str:
     info = await _vast_ensure_running(client)
     r = await client.post(
@@ -238,9 +250,10 @@ async def _vast_enhance(client: httpx.AsyncClient, image: str, fidelity: float, 
     b64 = r.json().get("image_b64")
     if not b64:
         raise RuntimeError("gpu hasil kosong")
+    # hasil sudah di tangan -> destroy langsung (nol total), watchdog jadi cadangan
     st = _vast_state()
-    st["last_used"] = time.time()
-    _vast_save(st)
+    if st.get("instance_id"):
+        await _vast_destroy(client, st["instance_id"])
     return b64
 
 

@@ -235,6 +235,8 @@ function showResult(blob) {
   const a = el('btnDl');
   a.href = state.afterURL;
   a.classList.remove('hidden');
+  // simpan otomatis: langsung unduh tanpa klik
+  try { a.click(); } catch (e) {}
 }
 
 async function refreshGpu() {
