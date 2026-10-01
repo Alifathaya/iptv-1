@@ -1,4 +1,8 @@
-"""Foto Jelas GPU server — GFPGAN (wajah) + Real-ESRGAN (background). Jalan di Vast.ai."""
+"""AI Worker GPU — stage terpisah dari Backend API (spec 16).
+Endpoint /v1/stage mengeksekusi SATU tahap berat per request sehingga
+backend bisa campur: tahap ringan lokal CPU, tahap berat di sini.
+Jalan di Vast.ai (lihat vast-gpu/Dockerfile); backend di Contabo.
+Tanpa GPU: backend otomatis fallback ke implementasi CPU lokal."""
 import base64
 import logging
 import os
@@ -9,96 +13,145 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("fJGpu")
+log = logging.getLogger("gpuworker")
 
 TOKEN = os.getenv("FJ_TOKEN", "")
-app = FastAPI(title="Foto Jelas GPU")
+WDIR = os.getenv("MODEL_DIR", "/opt/restore/weights")
+
+app = FastAPI(title="FotoRestore GPU worker")
 
 
-class Req(BaseModel):
-    mode: str = "enhance"
+class StageReq(BaseModel):
+    stage: str  # face_restore | upscale | deblur
     image: str  # dataURL
-    fidelity: float = 0.5  # 0..1, GFPGAN only_w=False; dipakai sebagai weight
-    upscale: int = 2
+    params: dict = {}
 
 
-_restorer = None
-
-
-def _b64_to_img(data_url: str):
-    try:
-        b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
-        raw = base64.b64decode(b64)
-    except Exception:
-        raise HTTPException(status_code=400, detail="image bukan base64 valid")
-    img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+def _img(data_url: str):
+    b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
+    img = cv2.imdecode(np.frombuffer(base64.b64decode(b64), np.uint8), cv2.IMREAD_COLOR)
     if img is None:
-        raise HTTPException(status_code=400, detail="gagal decode gambar")
+        raise HTTPException(status_code=400, detail="gambar tidak valid")
     return img
 
 
-def get_restorer():
-    global _restorer
-    if _restorer is not None:
-        return _restorer
-    from basicsr.utils.download_util import load_file_from_url
-    from gfpgan import GFPGANer
-    from realesrgan import RealESRGANer
-    from realesrgan.archs.srrnet_arch import RRDBNet
-    import torch
+def _out(img) -> str:
+    ok, buf = cv2.imencode(".png", img)
+    if not ok:
+        raise HTTPException(status_code=500, detail="encode gagal")
+    return "data:image/png;base64," + base64.b64encode(bytes(buf)).decode()
 
-    half = torch.cuda.is_available()
-    log.info("cuda=%s", half)
-    wdir = "/opt/restore/weights"
-    os.makedirs(wdir, exist_ok=True)
-    gfpgan_url = "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth"
-    esrgan_url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
-    gf_path = load_file_from_url(gfpgan_url, wdir)
-    esr_path = load_file_from_url(esrgan_url, wdir)
-    bg = RealESRGANer(
-        scale=4, model_path=esr_path,
-        model=RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4),
-        tile=400, tile_pad=10, pre_pad=0, half=half,
-    )
-    _restorer = GFPGANer(
-        model_path=gf_path, upscale=2, arch="clean", channel_multiplier=2,
-        bg_upsampler=bg,
-    )
-    log.info("restorer siap")
-    return _restorer
+
+_gfpgan = None
+_esrgan = None
+
+
+def _gfpgan():
+    global _gfpgan
+    if _gfpgan is None:
+        import torch
+        from gfpgan import GFPGANer
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("butuh CUDA")
+        _gfpgan = GFPGANer(model_path=os.path.join(WDIR, "GFPGANv1.4.pth"), upscale=1,
+                           arch="clean", channel_multiplier=2, bg_upsampler=None)
+    return _gfpgan
+
+
+def _esrgan():
+    global _esrgan
+    if _esrgan is None:
+        import torch
+        from basicsr.utils.download_util import load_file_from_url
+        from realesrgan import RealESRGANer
+        from realesrgan.archs.srrnet_arch import RRDBNet
+
+        half = torch.cuda.is_available()
+        if not half:
+            raise RuntimeError("butuh CUDA")
+        os.makedirs(WDIR, exist_ok=True)
+        path = os.path.join(WDIR, "RealESRGAN_x4plus.pth")
+        if not os.path.exists(path):
+            path = load_file_from_url(
+                "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", WDIR)
+        _esrgan = RealESRGANer(
+            scale=4, model_path=path,
+            model=RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
+                          num_block=23, num_grow_ch=32, scale=4),
+            tile=400, tile_pad=10, pre_pad=0, half=half)
+    return _esrgan
 
 
 @app.get("/health")
 def health():
-    import torch
+    try:
+        import torch
 
-    return {"status": "ok", "cuda": torch.cuda.is_available()}
+        cuda = torch.cuda.is_available()
+    except ImportError:
+        cuda = False
+    return {"status": "ok", "cuda": cuda}
 
 
-@app.post("/v1/restore")
-def restore(req: Req, x_api_token: str = Header(default="")):
+@app.post("/v1/stage")
+def stage(req: StageReq, x_api_token: str = Header(default="")):
     if TOKEN and x_api_token != TOKEN:
         raise HTTPException(status_code=401, detail="token salah")
-    if req.mode != "enhance":
-        raise HTTPException(status_code=501, detail="mode colorize/full tahap 2 (masih via fal)")
-    img = _b64_to_img(req.image)
-    h, w = img.shape[:2]
-    if max(h, w) > 2048:
-        s = 2048 / max(h, w)
-        img = cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
-    restorer = get_restorer()
+    img = _img(req.image)
     try:
-        _, _, out = restorer.enhance(
-            img, has_aligned=False, only_center_face=False, paste_back=True,
-            weight=float(req.fidelity if 0 <= req.fidelity <= 1 else 0.5),
-        )
+        if req.stage == "face_restore":
+            fid = float(req.params.get("fidelity", 0.8))
+            faces = req.params.get("faces", [])
+            out = _do_faces(img, faces, fid)
+        elif req.stage == "upscale":
+            scale = int(req.params.get("scale", 4))
+            out, _ = _esrgan().enhance(img, outscale=scale)
+        elif req.stage == "deblur":
+            out = _do_deblur(img, req.params.get("strength", "strong"))
+        else:
+            raise HTTPException(status_code=400, detail=f"stage {req.stage} tak dikenal")
+    except HTTPException:
+        raise
     except Exception as e:
-        log.exception("enhance gagal")
-        raise HTTPException(status_code=500, detail=f"enhance gagal: {e}")
-    if req.upscale == 4:
-        out = cv2.resize(out, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    ok, buf = cv2.imencode(".png", out)
-    if not ok:
-        raise HTTPException(status_code=500, detail="encode gagal")
-    b64 = base64.b64encode(bytes(buf)).decode()
-    return {"image_b64": "data:image/png;base64," + b64, "width": out.shape[1], "height": out.shape[0]}
+        log.exception("stage %s gagal", req.stage)
+        raise HTTPException(status_code=500, detail=f"{req.stage} gagal: {e}")
+    return {"image_b64": _out(out)}
+
+
+def _do_faces(img, faces, fidelity):
+    import cv2 as cv
+
+    r = _gfpgan()
+    out = img
+    for f in faces:
+        x, y, bw, bh = f["box"]
+        ex, ey = int(bw * 0.25), int(bh * 0.25)
+        x, y = max(0, x - ex), max(0, y - ey)
+        bw, bh = min(img.shape[1] - x, bw + 2 * ex), min(img.shape[0] - y, bh + 2 * ey)
+        crop = out[y:y + bh, x:x + bw].copy()
+        if crop.size == 0:
+            continue
+        if f.get("score", 0) < 0.75:
+            blur = cv.GaussianBlur(crop, (0, 0), 1.0)
+            patch = cv.addWeighted(crop, 1.1, blur, -0.1, 0)
+        else:
+            _, _, patch = r.enhance(crop, has_aligned=False, only_center_face=True,
+                                    paste_back=True, weight=max(0.7, min(0.9, fidelity)))
+        mask = np.full((bh, bw), 255, np.uint8)
+        try:
+            out = cv.seamlessClone(patch, out, mask, (x + bw // 2, y + bh // 2), cv.NORMAL_CLONE)
+        except cv.error:
+            out[y:y + bh, x:x + bw] = patch
+    return out
+
+
+def _do_deblur(img, strength):
+    # RL FFT (sama algoritma dengan backend CPU; di GPU batch besar lebih cepat
+    # bila torch tersedia — implementasi numpy agar jalan di mana saja)
+    import sys
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "worker"))
+    from pipeline.deblur import ClassicalRL
+
+    return ClassicalRL().process(img, strength if strength in ("light", "medium", "strong") else "strong")
