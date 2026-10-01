@@ -326,19 +326,14 @@ async def _vast_deploy_job() -> None:
                 DEPLOYING["msg"] = "tidak ada offer 3090/4090/A5000 yang cocok saat ini"
                 return
             token = secrets.token_hex(16)
-            onstart = (
-                "curl -sL https://raw.githubusercontent.com/Alifathaya/iptv-1/"
-                "vast/gpu-restore/vast-gpu/setup.sh -o /tmp/setup.sh"
-                " && bash /tmp/setup.sh > /tmp/setup.log 2>&1"
-            )
+            image = "ghcr.io/alifathaya/fotojelas-gpu:1"
             DEPLOYING["msg"] = f"sewa {offer.get('gpu_name')} ${offer.get('dph_total')}/jam..."
             c = await client.put(
                 f"{VAST_API}/asks/{offer['id']}/",
                 json={
-                    "image": "pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime",
-                    "disk": 40,
-                    "env": f"-e FJ_TOKEN={token} -e FJ_BRANCH=vast/gpu-restore",
-                    "onstart": onstart,
+                    "image": image,
+                    "disk": 30,
+                    "env": f"-e FJ_TOKEN={token}",
                 },
                 headers=_vast_headers(),
             )
@@ -348,7 +343,7 @@ async def _vast_deploy_job() -> None:
                 return
             iid = j["new_contract"]
             _vast_save({"instance_id": iid, "gpu_token": token, "last_used": time.time()})
-            DEPLOYING["msg"] = f"instance {iid} disiapkan (±20 menit pertama kali)..."
+            DEPLOYING["msg"] = f"instance {iid} disiapkan (image jadi, ±5 menit)..."
             info = await _vast_ensure_running(client)
             DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
             log.info("vast deploy OK %s", iid)
