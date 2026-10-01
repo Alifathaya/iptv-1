@@ -34,17 +34,52 @@ def _headers(token: str) -> dict:
     return {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
 
 
+_version_cache: dict = {}
+
+
+async def _latest_version(client: httpx.AsyncClient, token: str, model: str) -> str:
+    if model in _version_cache:
+        return _version_cache[model]
+    r = await client.get(f"{API}/models/{model}", headers=_headers(token))
+    if r.status_code != 200:
+        log.warning("version %s -> %s %.300s", model, r.status_code, r.text)
+        raise HTTPException(status_code=502, detail=f"Replicate {r.status_code} [cek model {model}]: {r.text[:500]}")
+    vid = (r.json().get("latest_version") or {}).get("id")
+    if not vid:
+        raise HTTPException(status_code=502, detail=f"Model {model} tidak punya versi publik.")
+    _version_cache[model] = vid
+    log.info("model %s version %s", model, vid)
+    return vid
+
+
+async def _create(client: httpx.AsyncClient, token: str, version: str, inp: dict, label: str) -> dict:
+    for attempt in range(4):
+        r = await client.post(f"{API}/predictions", json={"version": version, "input": inp}, headers=_headers(token))
+        if r.status_code == 429 and attempt < 3:
+            wait = 5 * (attempt + 1)
+            try:
+                wait = int(r.json().get("retry_after", wait))
+            except Exception:
+                pass
+            log.info("throttled %s, tunggu %ss", label, wait)
+            import asyncio
+
+            await asyncio.sleep(wait + 1)
+            continue
+        if r.status_code != 201:
+            log.warning("create %s -> %s %.500s", label, r.status_code, r.text)
+            raise HTTPException(status_code=502, detail=f"Replicate {r.status_code} [{label}]: {r.text[:500]}")
+        return r.json()
+    raise HTTPException(status_code=502, detail=f"Replicate 429 [{label}]: throttle, tunggu 1 menit lalu coba lagi.")
+
+
 async def _run(client: httpx.AsyncClient, token: str, model: str, inp: dict, label: str) -> str:
-    r = await client.post(f"{API}/models/{model}/predictions", json={"input": inp}, headers=_headers(token))
-    if r.status_code != 201:
-        log.warning("create %s -> %s %.500s", label, r.status_code, r.text)
-        raise HTTPException(status_code=502, detail=f"Replicate {r.status_code} [{label}]: {r.text[:500]}")
-    p = r.json()
+    version = await _latest_version(client, token, model)
+    p = await _create(client, token, version, inp, label)
     t0 = time.time()
     while p.get("status") in ("starting", "processing"):
         if time.time() - t0 > 300:
             raise HTTPException(status_code=504, detail=f"Timeout [{label}]")
-        await client.get(f"{API}/predictions/{p['id']}", headers=_headers(token))  # warm
         import asyncio
 
         await asyncio.sleep(2.5)
