@@ -65,7 +65,7 @@ def _esrgan():
         import torch
         from basicsr.utils.download_util import load_file_from_url
         from realesrgan import RealESRGANer
-        from realesrgan.archs.srrnet_arch import RRDBNet
+        from basicsr.archs.rrdbnet_arch import RRDBNet
 
         half = torch.cuda.is_available()
         if not half:
