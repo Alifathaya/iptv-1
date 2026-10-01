@@ -147,11 +147,25 @@ def _do_faces(img, faces, fidelity):
 
 
 def _do_deblur(img, strength):
-    # RL FFT (sama algoritma dengan backend CPU; di GPU batch besar lebih cepat
-    # bila torch tersedia — implementasi numpy agar jalan di mana saja)
-    import sys
+    import numpy as _np
+    from numpy.fft import fft2, ifft2
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "worker"))
-    from pipeline.deblur import ClassicalRL
-
-    return ClassicalRL().process(img, strength if strength in ("light", "medium", "strong") else "strong")
+    params = {"light": (5, 1.0, 5), "medium": (9, 2.0, 10), "strong": (15, 3.0, 15)}
+    k, sigma, iters = params.get(strength, params["strong"])
+    ax = _np.arange(k) - k // 2
+    xx, yy = _np.meshgrid(ax, ax)
+    psf = _np.exp(-(xx ** 2 + yy ** 2) / (2 * sigma ** 2))
+    psf /= psf.sum()
+    out_ch = []
+    for c in cv2.split(img):
+        h, w = c.shape
+        H = fft2(psf, s=(h, w))
+        Hc = _np.conj(H)
+        est = c.astype(_np.float64) + 1.0
+        tgt = est.copy()
+        for _ in range(iters):
+            conv = _np.real(ifft2(fft2(est) * H))
+            rel = tgt / _np.maximum(conv, 1e-6)
+            est = _np.clip(est * _np.real(ifft2(fft2(rel) * Hc)), 0, 255)
+        out_ch.append((est - 1.0).clip(0, 255).astype(_np.uint8))
+    return cv2.merge(out_ch)
