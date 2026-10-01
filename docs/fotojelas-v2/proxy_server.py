@@ -195,8 +195,8 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
         if not r.json().get("success", True):
             raise RuntimeError(f"start gagal: {r.text[:200]}")
         t0 = time.time()
-        while time.time() - t0 < 600:
-            await asyncio.sleep(15)
+        while time.time() - t0 < 1500:
+            await asyncio.sleep(20)
             inst = await _vast_instance(client, iid)
             status = inst.get("actual_status")
             if status == "running":
@@ -204,7 +204,7 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
             if status in ("exited", "unknown", "offline"):
                 raise RuntimeError(f"instance {status}, hubungi admin")
         else:
-            raise RuntimeError("instance tidak running dalam 10 menit")
+            raise RuntimeError("instance tidak running dalam 25 menit")
     ep = _vast_endpoint(inst)
     if not ep:
         raise RuntimeError("port 8000 instance tidak ketemu")
@@ -350,7 +350,7 @@ async def _vast_deploy_job() -> None:
                 return
             iid = j["new_contract"]
             _vast_save({"instance_id": iid, "gpu_token": token, "last_used": 0, "busy": False})
-            DEPLOYING["msg"] = f"instance {iid} disiapkan (image jadi, ±5 menit)..."
+            DEPLOYING["msg"] = f"instance {iid} disiapkan (image 7GB, ±15 menit pertama)..."
             try:
                 info = await _vast_ensure_running(client)
             except Exception:
