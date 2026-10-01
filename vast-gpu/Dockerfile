@@ -1,18 +1,18 @@
-# Foto Jelas GPU — image jadi (program + model dibungkus, nyala ±3 menit)
-# torch 2.1.x: basicsr butuh torchvision.transforms.functional_tensor
-# (modul itu dibuang di torchvision 0.17+, jadi jangan pakai base 2.2/2.4)
-FROM pytorch/pytorch:2.1.2-cuda12.1-cudnn8-runtime
+# Foto Jelas GPU slim (~5GB): cuda-runtime + pip torch (bukan image conda gemuk).
+# torch 2.1.x: basicsr butuh torchvision.transforms.functional_tensor.
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
 RUN apt-get update -qq \
- && apt-get install -y -qq libgl1 libglib2.0-0 curl \
+ && apt-get install -y -qq python3 python3-pip libgl1 libglib2.0-0 curl \
  && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install -q --upgrade pip \
- && python3 -m pip install -q --no-cache-dir "numpy<2" \
+RUN python3 -m pip install -q --no-cache-dir "numpy<2" \
+      torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121 \
+ && python3 -m pip install -q --no-cache-dir \
       fastapi "uvicorn[standard]" python-multipart opencv-python-headless \
       basicsr facexlib gfpgan realesrgan \
- && python3 -c "import numpy, torch; assert numpy.__version__.startswith('1.'), numpy.__version__; print('NUMPY_TORCH_OK', numpy.__version__)"
+ && python3 -c "import numpy, torch; assert numpy.__version__.startswith('1.'); print('TORCH_OK', torch.__version__)"
 
 # bakar weights ke dalam image (tidak download tiap nyala)
 RUN mkdir -p /opt/restore/weights && python3 -c \
