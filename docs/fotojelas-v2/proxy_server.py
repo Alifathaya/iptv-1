@@ -31,6 +31,9 @@ def _headers(key: str) -> dict:
 
 
 async def _run(client: httpx.AsyncClient, key: str, model: str, inp: dict, label: str) -> str:
+    model = (model or "").strip()
+    if "/" not in model:
+        model = "fal-ai/" + model
     s = await client.post(f"{QUEUE}/{model}", json={"input": inp}, headers=_headers(key))
     if s.status_code == 401:
         raise HTTPException(status_code=502, detail="fal 401 [key salah/kedaluwarsa]: ambil ulang di fal.ai/dashboard/keys")

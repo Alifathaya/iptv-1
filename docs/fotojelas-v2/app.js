@@ -9,10 +9,10 @@ const DESCS = {
 const DEF = { mEnh: 'fal-ai/codeformer', mCol: 'fal-ai/ddcolor' };
 
 function loadCfg() {
-  el('token').value = localStorage.getItem('fj2.token') || '';
-  el('mEnh').value = localStorage.getItem('fj2.mEnh') || DEF.mEnh;
-  el('mCol').value = localStorage.getItem('fj2.mCol') || DEF.mCol;
-  el('mUps').value = localStorage.getItem('fj2.mUps') || '2';
+  el('token').value = localStorage.getItem('fjv3.token') || '';
+  el('mEnh').value = localStorage.getItem('fjv3.mEnh') || DEF.mEnh;
+  el('mCol').value = localStorage.getItem('fjv3.mCol') || DEF.mCol;
+  el('mUps').value = localStorage.getItem('fjv3.mUps') || '2';
 }
 function setStatus(m) { el('status').textContent = m || ''; }
 function setProg(p) {
@@ -39,10 +39,10 @@ el('btnReset').addEventListener('click', function () {
   setStatus('');
 });
 el('btnSave').addEventListener('click', function () {
-  localStorage.setItem('fj2.token', el('token').value.trim());
-  localStorage.setItem('fj2.mEnh', el('mEnh').value.trim() || DEF.mEnh);
-  localStorage.setItem('fj2.mCol', el('mCol').value.trim() || DEF.mCol);
-  localStorage.setItem('fj2.mUps', el('mUps').value.trim() || DEF.mUps);
+  localStorage.setItem('fjv3.token', el('token').value.trim());
+  localStorage.setItem('fjv3.mEnh', el('mEnh').value.trim() || DEF.mEnh);
+  localStorage.setItem('fjv3.mCol', el('mCol').value.trim() || DEF.mCol);
+  localStorage.setItem('fjv3.mUps', el('mUps').value.trim() || DEF.mUps);
   setStatus('Pengaturan tersimpan di browser ini.');
 });
 
@@ -191,7 +191,7 @@ el('btnRun').addEventListener('click', async function () {
   state.busy = true;
   setProg(2);
   try {
-    const token = el('token').value.trim() || localStorage.getItem('fj2.token') || '';
+    const token = el('token').value.trim() || localStorage.getItem('fjv3.token') || '';
     if (!token) {
       alert('Isi API key fal.ai dulu (gratis $10), atau pakai Coba tanpa token untuk demo.');
       setStatus('Butuh key.');
