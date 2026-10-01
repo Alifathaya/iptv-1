@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Uji Backend FotoRestore (CPU)</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui;background:#0b1220;color:#e8eefc}
+.app{max-width:700px;margin:0 auto;padding:18px}
+.card{background:#131c31;border:1px solid #2a3a5f;border-radius:14px;padding:14px;margin:10px 0}
+button{background:#0ea5e9;border:0;border-radius:10px;padding:10px 16px;font-weight:800;cursor:pointer;color:#04121f}
+.ghost{background:transparent;border:1px solid #2a3a5f;color:#e8eefc}
+input,select{width:100%;background:#0b1220;border:1px solid #2a3a5f;color:#e8eefc;border-radius:10px;padding:9px;margin:4px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.hidden{display:none!important}
+.compare{position:relative;overflow:hidden;border-radius:10px}
+.compare img{display:block;width:100%}
+#after{position:absolute;inset:0;clip-path:inset(0 50% 0 0)}
+.bar{background:#0b1220;border-radius:99px;height:10px;overflow:hidden}
+.bar>div{height:100%;width:0;background:#0ea5e9}
+.st{color:#9fb0cc;min-height:20px;font-size:14px}
+pre{white-space:pre-wrap;font-size:12px;color:#9fb0cc}
+</style>
+</head>
+<body>
+<div class="app">
+<h2>Uji Backend FotoRestore <small style="color:#9fb0cc">Phase 1–7 CPU</small></h2>
+<div class="card">
+<b>1. Akun</b>
+<div class="row"><button id="bReg">Daftar (dapat API key)</button></div>
+<input id="key" type="password" placeholder="API key">
+<div class="row"><button id="bSave">Simpan key</button><span class="st" id="quota">Kuota: -</span></div>
+</div>
+<div class="card">
+<b>2. Upload & proses</b>
+<input id="file" type="file" accept="image/*">
+<div class="row">
+<select id="mode"><option>basic</option><option>hd</option><option>ultra</option></select>
+<select id="strength"><option>medium</option><option>light</option><option>strong</option></select>
+<input id="fid" type="number" min="0.7" max="0.9" step="0.05" value="0.8" title="fidelity">
+</div>
+<label><input id="gen" type="checkbox" style="width:auto"> generatif (ultra saja)</label>
+<div class="row"><button id="bGo">Proses</button></div>
+<div class="bar"><div id="bar"></div></div>
+<p class="st" id="st"></p>
+</div>
+<div class="card hidden" id="work">
+<div class="compare"><img id="before"><img id="after"></div>
+<div class="row"><input id="sl" type="range" min="0" max="100" value="50"><a id="dl" download="hasil.png"><button>Unduh</button></a></div>
+<pre id="meta"></pre>
+</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const key=()=>$('key').value.trim()||localStorage.getItem('fr.key')||'';
+$('bReg').onclick=async()=>{
+  const r=await fetch('/auth/register',{method:'POST'});const j=await r.json();
+  $('key').value=j.api_key;localStorage.setItem('fr.key',j.api_key);
+  alert('SIMPAN key ini (tampil sekali):\n'+j.api_key);refreshQ();
+};
+$('bSave').onclick=()=>{localStorage.setItem('fr.key',$('key').value.trim());refreshQ();};
+async function refreshQ(){
+  if(!key()){$('quota').textContent='Kuota: butuh key';return;}
+  const r=await fetch('/api/v1/me',{headers:{'X-Api-Key':key()}});
+  if(!r.ok){$('quota').textContent='Kuota: key salah';return;}
+  const j=await r.json();
+  $('quota').textContent='Kuota: '+(j.premium?'Premium':j.quota.used+'/'+j.quota.limit);
+}
+$('sl').oninput=e=>{$('after').style.clipPath='inset(0 '+(100-e.target.value)+'% 0 0)';};
+$('bGo').onclick=async()=>{
+  const f=$('file').files[0];if(!f||!key()){alert('Pilih foto + isi key');return;}
+  const fd=new FormData();fd.append('file',f);
+  fd.append('mode',$('mode').value);fd.append('strength',$('strength').value);
+  fd.append('fidelity',$('fid').value);fd.append('generative',$('gen').checked);
+  $('bar').style.width='3%';$('st').textContent='Upload...';
+  const r=await fetch('/api/v1/enhance',{method:'POST',headers:{'X-Api-Key':key()},body:fd});
+  if(r.status===429){alert('Kuota habis');return;}
+  if(!r.ok){alert(await r.text());return;}
+  const jid=(await r.json()).job_id;
+  $('before').src=URL.createObjectURL(f);
+  while(true){
+    await new Promise(x=>setTimeout(x,2000));
+    const s=await (await fetch('/api/v1/jobs/'+jid,{headers:{'X-Api-Key':key()}})).json();
+    $('bar').style.width=s.progress+'%';$('st').textContent=s.status+' '+s.progress+'%';
+    if(s.status==='completed')break;
+    if(s.status==='failed'){alert(s.error||'gagal');return;}
+  }
+  const b=await (await fetch('/api/v1/result/'+jid,{headers:{'X-Api-Key':key()}})).blob();
+  $('after').src=URL.createObjectURL(b);$('dl').href=$('after').src;
+  $('work').classList.remove('hidden');refreshQ();
+  const cost=await(await fetch('/api/v1/jobs/'+jid,{headers:{'X-Api-Key':key()}})).json();
+  $('meta').textContent=JSON.stringify(cost,null,1);
+};
+if(localStorage.getItem('fr.key')){$('key').value=localStorage.getItem('fr.key');refreshQ();}
+</script>
+</body>
+</html>

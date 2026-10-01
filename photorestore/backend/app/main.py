@@ -98,4 +98,10 @@ def delete_result(job_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "phase": 1}
+    return {"status": "ok", "phase": 7}
+
+
+@app.get("/test.html")
+def test_page():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "test.html"),
+                        media_type="text/html")
