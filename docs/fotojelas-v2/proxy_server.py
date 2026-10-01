@@ -20,7 +20,8 @@ VAST_API = "https://console.vast.ai/api/v0"
 VAST_API_V1 = "https://console.vast.ai/api/v1"
 VAST_KEY_FILE = os.path.expanduser("~/.vast-api-key")
 VAST_STATE_FILE = "/opt/fotojelas-proxy/vast.json"
-IDLE_MINUTES = 1  # cadangan: destroy bila destroy-utama gagal
+STOP_AFTER_MIN = 30  # cadangan: stop bila stop-utama gagal (instance RUNNING)
+DESTROY_AFTER_DAYS = 7  # destroy bila tak tersentuh 7 hari -> nol total
 DEPLOYING: dict = {"active": False, "msg": ""}
 
 
@@ -226,10 +227,22 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
     return {"endpoint": ep, "token": st.get("gpu_token", "")}
 
 
+async def _vast_stop(client: httpx.AsyncClient, iid: int) -> None:
+    try:
+        await client.put(f"{VAST_API}/instances/{iid}/", json={"state": "stopped"}, headers=_vast_headers())
+        log.info("vast %s stopped sehabis 1 foto (start lagi ±1 mnt)", iid)
+    except Exception as e:
+        log.warning("stop %s gagal: %s", iid, e)
+    st = _vast_state()
+    st["last_used"] = time.time()  # watchdog dihitung dari SELESAI
+    st["busy"] = False
+    _vast_save(st)
+
+
 async def _vast_destroy(client: httpx.AsyncClient, iid: int) -> None:
     try:
         await client.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
-        log.info("vast %s destroyed (langsung sehabis 1 foto)", iid)
+        log.info("vast %s destroyed (nganggur %s hari)", iid, DESTROY_AFTER_DAYS)
     except Exception as e:
         log.warning("destroy %s gagal: %s", iid, e)
     st = _vast_state()
@@ -257,10 +270,11 @@ async def _vast_enhance(client: httpx.AsyncClient, image: str, fidelity: float, 
         st["busy"] = False
         st["last_used"] = time.time()  # watchdog dihitung dari SELESAI
         _vast_save(st)
-    # hasil sudah di tangan -> destroy langsung (nol total), watchdog jadi cadangan
+    # hasil sudah di tangan -> stop langsung (start lagi ±1 mnt);
+    # destroy hanya bila 7 hari tak tersentuh (watchdog)
     st = _vast_state()
     if st.get("instance_id"):
-        await _vast_destroy(client, st["instance_id"])
+        await _vast_stop(client, st["instance_id"])
     return b64
 
 
@@ -271,18 +285,19 @@ async def _vast_watchdog() -> None:
             st = _vast_state()
             iid = st.get("instance_id")
             last = st.get("last_used", 0)
-            if not iid or st.get("busy") or not last or time.time() - last < IDLE_MINUTES * 60:
+            if not iid or st.get("busy") or not last:
                 continue
+            idle = time.time() - last
             async with httpx.AsyncClient(timeout=30) as client:
                 inst = await _vast_instance(client, iid)
-                # hanya destroy yang RUNNING + nganggur; loading/creating dibiarkan
-                if inst.get("actual_status") == "running":
-                    await client.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
-                    log.info("vast %s auto-destroy (nganggur %s mnt) -> nol total", iid, IDLE_MINUTES)
-                    st = _vast_state()
-                    st.pop("instance_id", None)
-                    st["last_used"] = 0
-                    _vast_save(st)
+                status = inst.get("actual_status")
+                if status == "running" and idle > STOP_AFTER_MIN * 60:
+                    # stop-utama gagal / dinyalakan manual -> stop paksa
+                    await client.put(f"{VAST_API}/instances/{iid}/", json={"state": "stopped"},
+                                     headers=_vast_headers())
+                    log.info("watchdog stop %s (nganggur)", iid)
+                elif status != "running" and idle > DESTROY_AFTER_DAYS * 86400:
+                    await _vast_destroy(client, iid)
         except Exception as e:
             log.warning("watchdog: %s", e)
 
@@ -386,7 +401,8 @@ async def vast_wake():
 def vast_status():
     st = _vast_state()
     return {"configured": bool(_vast_key()), "instance_id": st.get("instance_id"),
-            "last_used": st.get("last_used"), "idle_minutes": IDLE_MINUTES,
+            "last_used": st.get("last_used"), "stop_after_min": STOP_AFTER_MIN,
+            "destroy_after_days": DESTROY_AFTER_DAYS,
             "deploying": DEPLOYING["active"], "deploy_msg": DEPLOYING["msg"]}
 
 

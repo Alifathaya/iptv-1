@@ -246,7 +246,7 @@ async function refreshGpu() {
     let t = 'GPU: ';
     if (!j.configured) t += 'belum dipasang (butuh API key Vast di VPS)';
     else if (j.deploying) t += 'disiapkan... ' + (j.deploy_msg || '');
-    else if (j.instance_id) t += 'ada (instance ' + j.instance_id + ', auto-destroy bila nganggur 15 mnt)';
+    else if (j.instance_id) t += 'ada (instance ' + j.instance_id + ', stop otomatis tiap foto, destroy bila 7 hari tak dipakai)';
     else t += 'mati total (nol biaya). Tekan Nyalakan GPU bila mau test.';
     el('gpuState').textContent = t;
   } catch (e) { el('gpuState').textContent = 'GPU: tidak terjangkau'; }
