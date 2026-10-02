@@ -23,10 +23,10 @@ RUN mkdir -p /opt/restore/weights && python3 -c \
   d('https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth','/opt/restore/weights/RealESRGAN_x4plus.pth'); \
   print('WEIGHTS_OK')" \
  && python3 -c \
- "from huggingface_hub import snapshot_download; import glob, shutil; \
+ "from huggingface_hub import snapshot_download; import glob, shutil, os; \
   d = snapshot_download('piddnad/ddcolor_modelscope'); \
-  pts = glob.glob(d + '/**/*.pt', recursive=True); \
-  assert pts, 'ddcolor pt tidak ketemu'; \
+  pts = glob.glob(d + '/**/*.pt', recursive=True) + glob.glob(d + '/**/*.pth', recursive=True) + glob.glob(d + '/**/*.bin', recursive=True); \
+  assert pts, 'ddcolor weights tidak ketemu: ' + str(os.listdir(d)); \
   shutil.copy(pts[0], '/opt/restore/weights/ddcolor_modelscope.pt'); \
   print('DDCOLOR_OK', pts[0])" \
  && python3 -c \
