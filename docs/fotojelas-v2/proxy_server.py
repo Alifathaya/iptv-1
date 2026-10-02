@@ -376,7 +376,7 @@ async def _vast_deploy_job() -> None:
                 with open(os.path.expanduser("~/.github-packages-token")) as f:
                     ght = f.read().strip()
                 if ght:
-                    body["image_login"] = f"Alifathaya:{ght}"
+                    body["image_login"] = f"-u Alifathaya -p {ght} ghcr.io"
             except OSError:
                 pass
             DEPLOYING["msg"] = f"sewa {offer.get('gpu_name')} ${offer.get('dph_total')}/jam..."
