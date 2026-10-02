@@ -216,6 +216,9 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
             status = inst.get("actual_status")
             if status == "running":
                 break
+            msg = str(inst.get("status_msg") or "")
+            if "failed to start" in msg or "CDI" in msg or "OCI runtime" in msg:
+                raise RuntimeError(f"host rusak ({msg[:120]}), ganti host")
             if status in ("exited", "unknown", "offline"):
                 raise RuntimeError(f"instance {status}, hubungi admin")
         else:
@@ -326,12 +329,14 @@ async def _vast_watchdog() -> None:
             log.warning("watchdog: %s", e)
 
 
-def _pick_offer(offers: list) -> dict:
+def _pick_offers(offers: list, bad_hosts: set) -> list:
     cands = []
     for o in offers:
         if not o.get("rentable"):
             continue
         if (o.get("disk_space") or 0) < 40:
+            continue
+        if o.get("host_id") in bad_hosts:
             continue
         name = str(o.get("gpu_name", ""))
         if "3090" not in name and "4090" not in name and "A5000" not in name \
@@ -342,10 +347,14 @@ def _pick_offer(offers: list) -> dict:
         if (o.get("cuda_max_good") or 0) < 12.0:
             continue
         cands.append(o)
-    if not cands:
-        return {}
     cands.sort(key=lambda o: o.get("dph_total", 9e9))
-    return cands[0]
+    return cands[:3]
+
+
+def _pick_offer(offers: list) -> dict:
+    st = _vast_state()
+    c = _pick_offers(offers, set(st.get("bad_hosts", [])))
+    return c[0] if c else {}
 
 
 async def _vast_deploy_job() -> None:
@@ -364,9 +373,10 @@ async def _vast_deploy_job() -> None:
                 headers=_vast_headers(),
             )
             offers = (r.json().get("offers") or []) if r.status_code == 200 else []
-            offer = _pick_offer(offers)
-            if not offer:
-                DEPLOYING["msg"] = "tidak ada offer 3090/4090/A5000 yang cocok saat ini"
+            st0 = _vast_state()
+            cands = _pick_offers(offers, set(st0.get("bad_hosts", [])))
+            if not cands:
+                DEPLOYING["msg"] = "tidak ada offer GPU yang cocok saat ini"
                 return
             token = secrets.token_hex(16)
             image = "ghcr.io/alifathaya/fotojelas-gpu:3"
@@ -379,30 +389,42 @@ async def _vast_deploy_job() -> None:
                     body["image_login"] = f"-u Alifathaya -p {ght} ghcr.io"
             except OSError:
                 pass
-            DEPLOYING["msg"] = f"sewa {offer.get('gpu_name')} ${offer.get('dph_total')}/jam..."
-            c = await client.put(
-                f"{VAST_API}/asks/{offer['id']}/", json=body, headers=_vast_headers(),
-            )
-            j = c.json()
-            if not j.get("success"):
-                DEPLOYING["msg"] = f"sewa gagal: {j}"
-                return
-            iid = j["new_contract"]
-            _vast_save({"instance_id": iid, "gpu_token": token, "last_used": 0, "busy": False})
-            DEPLOYING["msg"] = f"instance {iid} disiapkan (image 7GB, ±15 menit pertama)..."
-            try:
-                info = await _vast_ensure_running(client)
-            except Exception:
-                # deploy gagal -> hapus yatim agar tidak menagih
+            last_err = "tidak ada kandidat"
+            for offer in cands:
+                DEPLOYING["msg"] = f"sewa {offer.get('gpu_name')} ${offer.get('dph_total')}/jam..."
+                c = await client.put(
+                    f"{VAST_API}/asks/{offer['id']}/", json=body, headers=_vast_headers(),
+                )
+                j = c.json()
+                if not j.get("success"):
+                    last_err = f"sewa gagal: {j}"
+                    continue
+                iid = j["new_contract"]
+                _vast_save({"instance_id": iid, "gpu_token": token, "last_used": 0,
+                            "busy": False, "bad_hosts": st0.get("bad_hosts", [])})
+                DEPLOYING["msg"] = f"instance {iid} disiapkan (±15 menit pertama)..."
                 try:
-                    async with httpx.AsyncClient(timeout=30) as c2:
-                        await c2.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
-                except Exception:
-                    pass
-                _vast_save({})
-                raise
-            DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
-            log.info("vast deploy OK %s", iid)
+                    info = await _vast_ensure_running(client)
+                except Exception as e:
+                    # host rusak -> blacklist + hapus yatim + coba host lain
+                    last_err = str(e)
+                    try:
+                        bh = set(_vast_state().get("bad_hosts", []))
+                        if offer.get("host_id"):
+                            bh.add(offer["host_id"])
+                        _vast_save({"bad_hosts": sorted(bh)})
+                        async with httpx.AsyncClient(timeout=30) as c2:
+                            await c2.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
+                    except Exception:
+                        pass
+                    DEPLOYING["msg"] = f"host bermasalah, coba host lain... ({last_err[:80]})"
+                    continue
+                DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
+                log.info("vast deploy OK %s", iid)
+                break
+            else:
+                DEPLOYING["msg"] = f"deploy gagal: {last_err}"
+                log.warning("deploy: %s", last_err)
     except Exception as e:
         DEPLOYING["msg"] = f"deploy gagal: {e}"
         log.warning("deploy: %s", e)
