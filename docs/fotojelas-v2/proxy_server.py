@@ -345,7 +345,7 @@ async def _vast_deploy_job() -> None:
                 DEPLOYING["msg"] = "tidak ada offer 3090/4090/A5000 yang cocok saat ini"
                 return
             token = secrets.token_hex(16)
-            image = "ghcr.io/alifathaya/fotojelas-gpu:1"
+            image = "ghcr.io/alifathaya/fotojelas-gpu:2"
             body = {"image": image, "disk": 30,
                     "env": f"-e FJ_TOKEN={token}"}
             try:
