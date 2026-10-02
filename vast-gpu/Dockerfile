@@ -5,6 +5,7 @@ FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 BASICSR_JIT=True
 RUN apt-get update -qq \
  && apt-get install -y -qq python3 python3-pip git libgl1 libglib2.0-0 curl \
+      ninja-build g++ \
  && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install -q --no-cache-dir "numpy<2" \
