@@ -11,7 +11,7 @@ RUN python3 -m pip install -q --no-cache-dir "numpy<2" \
       torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121 \
  && python3 -m pip install -q --no-cache-dir "numpy<2" \
       fastapi "uvicorn[standard]" python-multipart opencv-python-headless \
-      "basicsr==1.4.2" "facexlib==0.3.0" "gfpgan==1.0.4" "realesrgan==0.3.0" \
+      "basicsr==1.4.2" "facexlib==0.3.0" "gfpgan==1.3.8" "realesrgan==0.3.0" \
       "timm==0.9.16" huggingface_hub tqdm \
  && python3 -m pip install -q --no-cache-dir "numpy<2" \
       git+https://github.com/piddnad/DDColor.git \
