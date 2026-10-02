@@ -18,9 +18,9 @@ RUN python3 -m pip install -q --no-cache-dir "numpy<2" \
 
 # bakar weights ke dalam image (tidak download tiap nyala)
 RUN mkdir -p /opt/restore/weights && python3 -c \
- "from basicsr.utils.download_util import load_file_from_url as d; \
-  d('https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth','/opt/restore/weights'); \
-  d('https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth','/opt/restore/weights'); \
+ "from torch.hub import download_url_to_file as d; \
+  d('https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth','/opt/restore/weights/GFPGANv1.4.pth'); \
+  d('https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth','/opt/restore/weights/RealESRGAN_x4plus.pth'); \
   print('WEIGHTS_OK')" \
  && python3 -c \
  "from huggingface_hub import snapshot_download; import glob, shutil; \

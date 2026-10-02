@@ -96,6 +96,16 @@ def _full_enhancer():
     return _full
 
 
+
+def _download(url: str, wdir: str) -> str:
+    import urllib.request
+
+    os.makedirs(wdir, exist_ok=True)
+    dst = os.path.join(wdir, url.rsplit("/", 1)[-1])
+    if not os.path.exists(dst):
+        urllib.request.urlretrieve(url, dst)
+    return dst
+
 def _esrgan_model_fn():
     import torch
     from basicsr.archs.rrdbnet_arch import RRDBNet
@@ -108,7 +118,7 @@ def _esrgan_model_fn():
 
     path = os.path.join(WDIR, "RealESRGAN_x4plus.pth")
     if not os.path.exists(path):
-        path = load_file_from_url(
+        path = _download(
             "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", WDIR)
     return RealESRGANer(
         scale=4, model_path=path,
