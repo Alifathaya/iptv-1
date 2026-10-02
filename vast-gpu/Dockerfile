@@ -2,7 +2,7 @@
 # torch 2.1.x: basicsr butuh torchvision.transforms.functional_tensor.
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
-ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 BASICSR_JIT=True
 RUN apt-get update -qq \
  && apt-get install -y -qq python3 python3-pip git libgl1 libglib2.0-0 curl \
  && rm -rf /var/lib/apt/lists/*
@@ -12,10 +12,19 @@ RUN python3 -m pip install -q --no-cache-dir "numpy<2" \
  && python3 -m pip install -q --no-cache-dir "numpy<2" \
       fastapi "uvicorn[standard]" python-multipart opencv-python-headless \
       "basicsr==1.4.2" "facexlib==0.3.0" "gfpgan==1.0.4" "realesrgan==0.3.0" \
-      timm huggingface_hub tqdm \
+      "timm==0.9.16" huggingface_hub tqdm \
  && python3 -m pip install -q --no-cache-dir "numpy<2" \
       git+https://github.com/piddnad/DDColor.git \
+ && python3 -m pip install -q --no-cache-dir --force-reinstall --no-deps "basicsr==1.4.2" \
  && python3 -c "import numpy, torch; assert numpy.__version__.startswith('1.'); print('TORCH_OK', torch.__version__)"
+
+# pastikan stylegan2_arch ada (DDColor bisa menimpanya): fallback curl bila hilang
+RUN python3 -c "import basicsr, os; p=os.path.join(os.path.dirname(basicsr.__file__),'archs','stylegan2_arch.py'); \
+  assert os.path.exists(p), 'stylegan2_arch hilang'; print('STYLEGAN_OK')" \
+ || python3 -c "import basicsr, os, urllib.request; \
+  d=os.path.join(os.path.dirname(basicsr.__file__),'archs'); \
+  urllib.request.urlretrieve('https://raw.githubusercontent.com/XPixelGroup/BasicSR/v1.4.2/basicsr/archs/stylegan2_arch.py', d+'/stylegan2_arch.py'); \
+  print('STYLEGAN_FALLBACK_OK')"
 
 # bakar weights ke dalam image (tidak download tiap nyala)
 RUN mkdir -p /opt/restore/weights && python3 -c \
