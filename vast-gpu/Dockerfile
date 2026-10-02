@@ -19,13 +19,12 @@ RUN python3 -m pip install -q --no-cache-dir "numpy<2" \
  && python3 -m pip install -q --no-cache-dir --force-reinstall --no-deps "basicsr==1.4.2" \
  && python3 -c "import numpy, torch; assert numpy.__version__.startswith('1.'); print('TORCH_OK', torch.__version__)"
 
-# pastikan stylegan2_arch ada (DDColor bisa menimpanya): fallback curl bila hilang
-RUN python3 -c "import basicsr, os; p=os.path.join(os.path.dirname(basicsr.__file__),'archs','stylegan2_arch.py'); \
-  assert os.path.exists(p), 'stylegan2_arch hilang'; print('STYLEGAN_OK')" \
- || python3 -c "import basicsr, os, urllib.request; \
-  d=os.path.join(os.path.dirname(basicsr.__file__),'archs'); \
-  urllib.request.urlretrieve('https://raw.githubusercontent.com/XPixelGroup/BasicSR/v1.4.2/basicsr/archs/stylegan2_arch.py', d+'/stylegan2_arch.py'); \
-  print('STYLEGAN_FALLBACK_OK')"
+# pastikan stylegan2_arch ada (DDColor bisa menimpanya): cek file TANPA import
+# (import memicu kompilasi JIT CUDA yang butuh GPU) + fallback curl bila hilang
+RUN P=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")/basicsr/archs/stylegan2_arch.py; \
+  if test -f "$P"; then echo STYLEGAN_OK; else \
+  curl -sL -o "$P" https://raw.githubusercontent.com/XPixelGroup/BasicSR/v1.4.2/basicsr/archs/stylegan2_arch.py \
+  && echo STYLEGAN_FALLBACK_OK; fi; test -f "$P"
 
 # bakar weights ke dalam image (tidak download tiap nyala)
 RUN mkdir -p /opt/restore/weights && python3 -c \
