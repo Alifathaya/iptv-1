@@ -185,7 +185,16 @@ async def _vast_instance(client: httpx.AsyncClient, iid: int) -> dict:
     r = await client.get(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
     r.raise_for_status()
     insts = r.json().get("instances", {})
-    return insts.get(str(iid), {}) if isinstance(insts, dict) else {}
+    inst = insts.get(str(iid), {}) if isinstance(insts, dict) else {}
+    if inst and inst.get("actual_status"):
+        return inst
+    # fallback: daftar v1 bila detail v0 kosong/flaky
+    g = await client.get(f"{VAST_API_V1}/instances/", headers=_vast_headers())
+    if g.status_code == 200:
+        for it in g.json().get("instances", []):
+            if str(it.get("id")) == str(iid):
+                return it
+    return inst
 
 
 def _vast_endpoint(inst: dict) -> str:
