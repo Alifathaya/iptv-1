@@ -389,7 +389,7 @@ async def _vast_deploy_job() -> None:
                 return
             token = secrets.token_hex(16)
             image = "ghcr.io/alifathaya/fotojelas-gpu:3"
-            body = {"image": image, "disk": 30,
+            body = {"image": image, "disk": 30, "runtype": "args",
                     "env": f"-e FJ_TOKEN={token}"}
             try:
                 with open(os.path.expanduser("~/.github-packages-token")) as f:
