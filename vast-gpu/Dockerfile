@@ -31,7 +31,7 @@ RUN mkdir -p /opt/restore/weights && python3 -c \
   print('DDCOLOR_OK', pts[0])" \
  && python3 -c \
  "from facexlib.detection import init_detection_model; \
-  init_detection_model('retinaface_resnet50', half=False); \
+  init_detection_model('retinaface_resnet50', half=False, device='cpu'); \
   print('FACEDET_OK')"
 
 COPY server.py /opt/restore/server.py
