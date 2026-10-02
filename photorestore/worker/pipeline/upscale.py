@@ -36,15 +36,17 @@ class RealEsrganUpscaler:
         if self._model is not None:
             return self._model
         import torch
-        from basicsr.utils.download_util import load_file_from_url
         from realesrgan import RealESRGANer
+        import urllib.request
         from basicsr.archs.rrdbnet_arch import RRDBNet
 
         half = torch.cuda.is_available()
         wdir = os.getenv("MODEL_DIR", "/opt/restore/weights")
         os.makedirs(wdir, exist_ok=True)
-        path = load_file_from_url(
-            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", wdir)
+        path = os.path.join(wdir, "RealESRGAN_x4plus.pth")
+        if not os.path.exists(path):
+            urllib.request.urlretrieve(
+                "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", path)
         model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                         num_block=23, num_grow_ch=32, scale=4)
         self._model = RealESRGANer(scale=4, model_path=path, model=model,
