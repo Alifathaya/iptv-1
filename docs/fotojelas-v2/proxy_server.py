@@ -80,16 +80,18 @@ async def restore(req: RestoreReq, x_fal_key: str = Header(default="")):
         raise HTTPException(status_code=400, detail="mode harus enhance/colorize/full")
     provider = "fal"
     async with httpx.AsyncClient(timeout=60) as client:
+        vast = _vast_configured()
         if req.mode == "enhance":
-            key = (x_fal_key or "").strip()
-            if _vast_configured():
+            if vast:
                 try:
-                    b64 = await _vast_enhance(client, req.image, req.fidelity, req.upscale)
+                    b64 = await _vast_stage(client, "enhance", req.image,
+                                            req.fidelity, req.upscale)
                     return {"image_b64": b64, "provider": "vast-gpu"}
                 except HTTPException:
                     raise
                 except Exception as e:
                     log.warning("vast gagal, fallback fal: %s", e)
+            key = (x_fal_key or "").strip()
             if not key:
                 raise HTTPException(status_code=400, detail="Key fal.ai kosong (dan GPU Vast belum aktif).")
             inp = {"image_url": req.image, "fidelity": req.fidelity,
@@ -97,27 +99,39 @@ async def restore(req: RestoreReq, x_fal_key: str = Header(default="")):
             inp.update(req.extra)
             url = await _run(client, key, req.model_enhance, inp, "enhance")
         elif req.mode == "colorize":
-            key = (x_fal_key or "").strip()
-            if not key:
-                raise HTTPException(status_code=400, detail="Key fal.ai kosong.")
-            inp = {"image_url": req.image}
-            inp.update(req.extra)
-            url = await _run(client, key, req.model_colorize, inp, "colorize")
-        else:
-            key = (x_fal_key or "").strip()
-            if not key:
-                raise HTTPException(status_code=400, detail="Key fal.ai kosong.")
-            inp1 = {"image_url": req.image}
-            inp1.update((req.extra or {}).get("colorize", {}))
-            colored = await _run(client, key, req.model_colorize, inp1, "full-1-colorize")
-            if _vast_configured():
+            if vast:
                 try:
-                    b64 = await _vast_enhance(client, colored, req.fidelity, req.upscale)
+                    b64 = await _vast_stage(client, "colorize", req.image,
+                                            req.fidelity, req.upscale)
                     return {"image_b64": b64, "provider": "vast-gpu"}
                 except HTTPException:
                     raise
                 except Exception as e:
                     log.warning("vast gagal, fallback fal: %s", e)
+            key = (x_fal_key or "").strip()
+            if not key:
+                raise HTTPException(status_code=400, detail="Key fal.ai kosong (dan GPU Vast belum aktif).")
+            inp = {"image_url": req.image}
+            inp.update(req.extra)
+            url = await _run(client, key, req.model_colorize, inp, "colorize")
+        else:
+            if vast:
+                try:
+                    colored = await _vast_stage(client, "colorize", req.image,
+                                                req.fidelity, req.upscale)
+                    b64 = await _vast_stage(client, "enhance", colored,
+                                            req.fidelity, req.upscale)
+                    return {"image_b64": b64, "provider": "vast-gpu"}
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    log.warning("vast gagal, fallback fal: %s", e)
+            key = (x_fal_key or "").strip()
+            if not key:
+                raise HTTPException(status_code=400, detail="Key fal.ai kosong (dan GPU Vast belum aktif).")
+            inp1 = {"image_url": req.image}
+            inp1.update((req.extra or {}).get("colorize", {}))
+            colored = await _run(client, key, req.model_colorize, inp1, "full-1-colorize")
             inp2 = {"image_url": colored, "fidelity": req.fidelity,
                     "upscale_factor": req.upscale, "face_upscale": True}
             inp2.update((req.extra or {}).get("enhance", {}))
@@ -251,15 +265,25 @@ async def _vast_destroy(client: httpx.AsyncClient, iid: int) -> None:
     _vast_save(st)
 
 
-async def _vast_enhance(client: httpx.AsyncClient, image: str, fidelity: float, upscale: int) -> str:
+async def _vast_stage(client: httpx.AsyncClient, kind: str, image: str,
+                      fidelity: float, upscale: int) -> str:
+    """kind enhance -> GPU /v1/restore ; kind colorize -> GPU /v1/stage."""
     info = await _vast_ensure_running(client)
     try:
-        r = await client.post(
-            info["endpoint"] + "/v1/restore",
-            json={"mode": "enhance", "image": image, "fidelity": fidelity, "upscale": upscale},
-            headers={"X-Api-Token": info["token"]},
-            timeout=600,
-        )
+        if kind == "enhance":
+            r = await client.post(
+                info["endpoint"] + "/v1/restore",
+                json={"image": image, "fidelity": fidelity, "upscale": upscale},
+                headers={"X-Api-Token": info["token"]},
+                timeout=600,
+            )
+        else:
+            r = await client.post(
+                info["endpoint"] + "/v1/stage",
+                json={"stage": "colorize", "image": image, "params": {}},
+                headers={"X-Api-Token": info["token"]},
+                timeout=600,
+            )
         if r.status_code != 200:
             raise RuntimeError(f"gpu {r.status_code}: {r.text[:300]}")
         b64 = r.json().get("image_b64")

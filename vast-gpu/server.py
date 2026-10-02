@@ -44,6 +44,7 @@ def _out(img) -> str:
 
 _gfpgan_model = None
 _esrgan_model = None
+_ddcolor_pipe = None
 
 
 def _gfpgan():
@@ -62,24 +63,7 @@ def _gfpgan():
 def _esrgan():
     global _esrgan_model
     if _esrgan_model is None:
-        import torch
-        from basicsr.utils.download_util import load_file_from_url
-        from realesrgan import RealESRGANer
-        from basicsr.archs.rrdbnet_arch import RRDBNet
-
-        half = torch.cuda.is_available()
-        if not half:
-            raise RuntimeError("butuh CUDA")
-        os.makedirs(WDIR, exist_ok=True)
-        path = os.path.join(WDIR, "RealESRGAN_x4plus.pth")
-        if not os.path.exists(path):
-            path = load_file_from_url(
-                "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", WDIR)
-        _esrgan_model = RealESRGANer(
-            scale=4, model_path=path,
-            model=RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
-                          num_block=23, num_grow_ch=32, scale=4),
-            tile=400, tile_pad=10, pre_pad=0, half=half)
+        _esrgan_model = _esrgan_model_fn()
     return _esrgan_model
 
 
@@ -92,6 +76,69 @@ def health():
     except ImportError:
         cuda = False
     return {"status": "ok", "cuda": cuda}
+
+
+_full = None
+
+
+def _full_enhancer():
+    global _full
+    if _full is None:
+        import torch
+        from gfpgan import GFPGANer
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("butuh CUDA")
+        bg = _esrgan_model_fn()
+        _full = GFPGANer(
+            model_path=os.path.join(WDIR, "GFPGANv1.4.pth"), upscale=2,
+            arch="clean", channel_multiplier=2, bg_upsampler=bg)
+    return _full
+
+
+def _esrgan_model_fn():
+    import torch
+    from basicsr.archs.rrdbnet_arch import RRDBNet
+    from realesrgan import RealESRGANer
+
+    half = torch.cuda.is_available()
+    if not half:
+        raise RuntimeError("butuh CUDA")
+    from basicsr.utils.download_util import load_file_from_url
+
+    path = os.path.join(WDIR, "RealESRGAN_x4plus.pth")
+    if not os.path.exists(path):
+        path = load_file_from_url(
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", WDIR)
+    return RealESRGANer(
+        scale=4, model_path=path,
+        model=RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
+                      num_block=23, num_grow_ch=32, scale=4),
+        tile=400, tile_pad=10, pre_pad=0, half=half)
+
+
+class RestoreReq(BaseModel):
+    image: str
+    fidelity: float = 0.8
+    upscale: int = 2
+
+
+@app.post("/v1/restore")
+def restore(req: RestoreReq, x_api_token: str = Header(default="")):
+    if TOKEN and x_api_token != TOKEN:
+        raise HTTPException(status_code=401, detail="token salah")
+    img = _img(req.image)
+    try:
+        r = _full_enhancer()
+        _, _, out = r.enhance(
+            img, has_aligned=False, only_center_face=False, paste_back=True,
+            weight=max(0.7, min(0.9, req.fidelity)))
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("restore gagal")
+        raise HTTPException(status_code=500, detail=f"restore gagal: {e}")
+    return {"image_b64": _out(out)}
 
 
 @app.post("/v1/stage")
@@ -109,6 +156,8 @@ def stage(req: StageReq, x_api_token: str = Header(default="")):
             out, _ = _esrgan().enhance(img, outscale=scale)
         elif req.stage == "deblur":
             out = _do_deblur(img, req.params.get("strength", "strong"))
+        elif req.stage == "colorize":
+            out = _do_colorize(img)
         else:
             raise HTTPException(status_code=400, detail=f"stage {req.stage} tak dikenal")
     except HTTPException:
@@ -144,6 +193,20 @@ def _do_faces(img, faces, fidelity):
         except cv.error:
             out[y:y + bh, x:x + bw] = patch
     return out
+
+
+def _do_colorize(img):
+    global _ddcolor_pipe
+    if _ddcolor_pipe is None:
+        import torch
+        from ddcolor import DDColor, ColorizationPipeline, build_ddcolor_model
+
+        dev = "cuda" if torch.cuda.is_available() else "cpu"
+        model = build_ddcolor_model(
+            DDColor, model_path="/opt/restore/weights/ddcolor_modelscope.pt",
+            input_size=512, model_size="large", device=torch.device(dev))
+        _ddcolor_pipe = ColorizationPipeline(model, input_size=512, device=torch.device(dev))
+    return _ddcolor_pipe.process(img)
 
 
 def _do_deblur(img, strength):
