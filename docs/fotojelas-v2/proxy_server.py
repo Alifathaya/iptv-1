@@ -505,10 +505,21 @@ async def _vast_monitor_job(iid: int) -> None:
     DEPLOYING.update(active=True, msg=f"memantau instance {iid}...")
     try:
         async with httpx.AsyncClient(timeout=60) as client:
-            info = await _vast_ensure_running(client)
-        DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
+            last = "menunggu"
+            for attempt in range(4):
+                try:
+                    info = await _vast_ensure_running(client)
+                    DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
+                    log.info("vast monitor OK %s", iid)
+                    return
+                except Exception as e:
+                    last = str(e)
+                    log.warning("monitor coba %s: %s", attempt + 1, last[:150])
+                    await asyncio.sleep(60)
+            DEPLOYING["msg"] = f"pantau gagal: {last}"
     except Exception as e:
         DEPLOYING["msg"] = f"pantau gagal: {e}"
+        log.exception("monitor fatal")
     finally:
         DEPLOYING["active"] = False
 
