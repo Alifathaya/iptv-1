@@ -190,19 +190,26 @@ def _vast_save(state: dict) -> None:
 
 
 async def _vast_instance(client: httpx.AsyncClient, iid: int) -> dict:
-    r = await client.get(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
-    r.raise_for_status()
-    insts = r.json().get("instances", {})
-    inst = insts.get(str(iid), {}) if isinstance(insts, dict) else {}
-    if inst and inst.get("actual_status"):
-        return inst
-    # fallback: daftar v1 bila detail v0 kosong/flaky
-    g = await client.get(f"{VAST_API_V1}/instances/", headers=_vast_headers())
-    if g.status_code == 200:
-        for it in g.json().get("instances", []):
-            if str(it.get("id")) == str(iid):
-                return it
-    return inst
+    for url in (f"{VAST_API}/instances/{iid}/", f"{VAST_API_V1}/instances/"):
+        try:
+            r = await client.get(url, headers=_vast_headers())
+            if r.status_code == 429:
+                await asyncio.sleep(30)
+                continue
+            r.raise_for_status()
+            if url.endswith("instances/"):
+                for it in r.json().get("instances", []):
+                    if str(it.get("id")) == str(iid):
+                        return it
+            else:
+                insts = r.json().get("instances", {})
+                inst = insts.get(str(iid), {}) if isinstance(insts, dict) else {}
+                if inst and inst.get("actual_status"):
+                    return inst
+        except Exception as e:
+            log.warning("vast api %s: %s", url, str(e)[:120])
+            await asyncio.sleep(10)
+    return {}
 
 
 def _vast_endpoint(inst: dict) -> str:
@@ -221,11 +228,12 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
         raise RuntimeError("GPU belum dinyalakan. Tekan tombol Nyalakan GPU di panel Pengaturan, tunggu ±20 menit, lalu coba lagi.")
     inst = await _vast_instance(client, iid)
     status = inst.get("actual_status")
-    if status != "running":
+    if status == "stopped":
         log.info("vast %s status=%s -> start", iid, status)
         r = await client.put(f"{VAST_API}/instances/{iid}/", json={"state": "running"}, headers=_vast_headers())
         if not r.json().get("success", True):
             raise RuntimeError(f"start gagal: {r.text[:200]}")
+        # status tidak diketahui (None/api flaky) -> TUNGGU, jangan start/delete
         t0 = time.time()
         while time.time() - t0 < 1500:
             await asyncio.sleep(20)
@@ -365,7 +373,7 @@ def _pick_offers(offers: list, bad_hosts: set) -> list:
     for o in offers:
         if not o.get("rentable"):
             continue
-        if (o.get("disk_space") or 0) < 40:
+        if (o.get("disk_space") or 0) < 55:
             continue
         if o.get("host_id") in bad_hosts:
             continue
@@ -422,12 +430,19 @@ async def _vast_deploy_job() -> None:
             except OSError:
                 pass
             last_err = "tidak ada kandidat"
+            disk = 50
             for offer in cands:
                 DEPLOYING["msg"] = f"sewa {offer.get('gpu_name')} ${offer.get('dph_total')}/jam..."
-                c = await client.put(
-                    f"{VAST_API}/asks/{offer['id']}/", json=body, headers=_vast_headers(),
-                )
-                j = c.json()
+                body["disk"] = disk
+                try:
+                    c = await client.put(
+                        f"{VAST_API}/asks/{offer['id']}/", json=body, headers=_vast_headers(),
+                    )
+                    j = c.json()
+                except Exception as e:
+                    last_err = f"sewa error jaringan/throttle: {e}"
+                    await asyncio.sleep(30)
+                    continue
                 if not j.get("success"):
                     last_err = f"sewa gagal: {j}"
                     continue
@@ -438,19 +453,25 @@ async def _vast_deploy_job() -> None:
                 try:
                     info = await _vast_ensure_running(client)
                 except Exception as e:
-                    # host rusak -> blacklist + hapus yatim + coba host lain
                     last_err = str(e)
-                    try:
-                        bh = set(_vast_state().get("bad_hosts", []))
-                        if offer.get("host_id"):
-                            bh.add(offer["host_id"])
-                        _vast_save({"bad_hosts": sorted(bh)})
-                        async with httpx.AsyncClient(timeout=30) as c2:
-                            await c2.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
-                    except Exception:
-                        pass
-                    DEPLOYING["msg"] = f"host bermasalah, coba host lain... ({last_err[:80]})"
-                    continue
+                    # hapus yatim HANYA bila host terbukti rusak; error api/throttle -> biarkan
+                    if "host rusak" in last_err or "tidak running dalam" in last_err:
+                        try:
+                            bh = set(_vast_state().get("bad_hosts", []))
+                            if "host rusak" in last_err and offer.get("host_id"):
+                                bh.add(offer["host_id"])
+                            _vast_save({"bad_hosts": sorted(bh),
+                                        **({"instance_id": iid, "gpu_token": token}
+                                           if "tidak running dalam" in last_err else {})})
+                            if "host rusak" in last_err:
+                                async with httpx.AsyncClient(timeout=30) as c2:
+                                    await c2.delete(f"{VAST_API}/instances/{iid}/", headers=_vast_headers())
+                        except Exception:
+                            pass
+                        DEPLOYING["msg"] = f"host bermasalah, coba host lain... ({last_err[:80]})"
+                        continue
+                    DEPLOYING["msg"] = f"deploy tertunda: {last_err[:100]}"
+                    break
                 DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
                 log.info("vast deploy OK %s", iid)
                 break
