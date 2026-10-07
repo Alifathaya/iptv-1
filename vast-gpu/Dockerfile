@@ -1,49 +1,34 @@
-# Foto Jelas GPU slim (~5GB): cuda-runtime + pip torch (bukan image conda gemuk).
-# torch 2.1.x: basicsr butuh torchvision.transforms.functional_tensor.
+# Foto Jelas GPU — Flux soft-restore. Tag :flux1
+# Pipeline: light Telea repair → FLUX.1-schnell img2img (strength~0.42) → mild sharpen
+# NO DDColor / CodeFormer / GFPGAN / basicsr
+# Weights downloaded at first /v1/warmup or restore on Vast
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
-ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 BASICSR_JIT=True
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/opt/restore/hf \
+    HUGGINGFACE_HUB_CACHE=/opt/restore/hf/hub \
+    TRANSFORMERS_CACHE=/opt/restore/hf/hub \
+    FLUX_MODEL_ID=black-forest-labs/FLUX.1-schnell \
+    DIFFUSERS_ATTN_BACKEND=sdpa
+
 RUN apt-get update -qq \
  && apt-get install -y -qq python3 python3-pip git libgl1 libglib2.0-0 curl \
-      ninja-build g++ \
  && rm -rf /var/lib/apt/lists/*
 
+# Pin stack: diffusers 0.40 + torch 2.4 breaks on flash_attn_3 schema (float|None).
+# torch 2.5.1 + diffusers 0.32.2 is a known-good Flux img2img combo.
 RUN python3 -m pip install -q --no-cache-dir "numpy<2" \
-      torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121 \
+      torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121 \
  && python3 -m pip install -q --no-cache-dir "numpy<2" \
-      fastapi "uvicorn[standard]" python-multipart opencv-python-headless \
-      "basicsr==1.4.2" "facexlib==0.3.0" "gfpgan==1.3.8" "realesrgan==0.3.0" \
-      "timm==0.9.16" huggingface_hub tqdm \
- && python3 -m pip install -q --no-cache-dir "numpy<2" \
-      git+https://github.com/piddnad/DDColor.git \
- && python3 -m pip install -q --no-cache-dir --force-reinstall --no-deps "basicsr==1.4.2" \
- && python3 -c "import numpy, torch; assert numpy.__version__.startswith('1.'); print('TORCH_OK', torch.__version__)"
+      fastapi "uvicorn[standard]" python-multipart opencv-python-headless pillow \
+      "diffusers==0.32.2" "transformers==4.46.3" "accelerate==1.2.1" \
+      sentencepiece protobuf huggingface_hub safetensors "bitsandbytes==0.45.0" \
+ && python3 -c "import torch, torchvision, diffusers, transformers, bitsandbytes; \
+  print('OK', torch.__version__, torchvision.__version__, diffusers.__version__, transformers.__version__); \
+  from diffusers import FluxImg2ImgPipeline; print('FLUX_IMG2IMG_IMPORT_OK')"
 
-# pastikan stylegan2_arch ada (DDColor bisa menimpanya): cek file TANPA import
-# (import memicu kompilasi JIT CUDA yang butuh GPU) + fallback curl bila hilang
-RUN P=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")/basicsr/archs/stylegan2_arch.py; \
-  if test -f "$P"; then echo STYLEGAN_OK; else \
-  curl -sL -o "$P" https://raw.githubusercontent.com/XPixelGroup/BasicSR/v1.4.2/basicsr/archs/stylegan2_arch.py \
-  && echo STYLEGAN_FALLBACK_OK; fi; test -f "$P"
-
-# bakar weights ke dalam image (tidak download tiap nyala)
-RUN mkdir -p /opt/restore/weights && python3 -c \
- "from torch.hub import download_url_to_file as d; \
-  d('https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth','/opt/restore/weights/GFPGANv1.4.pth'); \
-  d('https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth','/opt/restore/weights/RealESRGAN_x4plus.pth'); \
-  print('WEIGHTS_OK')" \
- && python3 -c \
- "from huggingface_hub import snapshot_download; import glob, shutil, os; \
-  d = snapshot_download('piddnad/ddcolor_modelscope'); \
-  pts = glob.glob(d + '/**/*.pt', recursive=True) + glob.glob(d + '/**/*.pth', recursive=True) + glob.glob(d + '/**/*.bin', recursive=True); \
-  assert pts, 'ddcolor weights tidak ketemu: ' + str(os.listdir(d)); \
-  shutil.copy(pts[0], '/opt/restore/weights/ddcolor_modelscope.pt'); \
-  print('DDCOLOR_OK', pts[0])" \
- && python3 -c \
- "from facexlib.detection import init_detection_model; \
-  init_detection_model('retinaface_resnet50', half=False, device='cpu'); \
-  print('FACEDET_OK')"
-
+RUN mkdir -p /opt/restore/hf /opt/restore/weights
 COPY server.py /opt/restore/server.py
 WORKDIR /opt/restore
 EXPOSE 8000

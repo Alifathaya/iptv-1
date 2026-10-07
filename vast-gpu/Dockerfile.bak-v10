@@ -1,0 +1,116 @@
+# Foto Jelas GPU slim. Tag :10 — muted DDColor (color_strength~0.5 grayscale blend):
+# Pipeline: zeroscratches repair → DDColor+desat → CodeFormer (w~0.85, adain=off, up=1) → light sharpen/upscale
+# Keep from :7:
+# 1) DDColor via git clone + PYTHONPATH (NOT pip — setup.py names package basicsr)
+# 2) nvcc via multi-stage copy of /usr/local/cuda from cuda-devel
+# 3) pinned basicsr 1.4.2 + RRDBNet from basicsr.archs.rrdbnet_arch
+# 4) TORCH_CUDA_ARCH_LIST so BASICSR_JIT works on CPU build
+# 5) zeroscratches (Bringing-Old-Photos scratch/artifact)
+# 6) CodeFormer arch copied into site-packages basicsr (no CodeFormer setup.py)
+FROM nvidia/cuda:12.1.0-devel-ubuntu22.04 AS cuda-devel
+
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    BASICSR_JIT=True \
+    PYTHONPATH=/opt/DDColor \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:$PATH \
+    TORCH_CUDA_ARCH_LIST="7.5;8.0;8.6+PTX" \
+    FORCE_CUDA=1 \
+    HF_HOME=/opt/restore/hf \
+    HUGGINGFACE_HUB_CACHE=/opt/restore/hf/hub
+
+COPY --from=cuda-devel /usr/local/cuda /usr/local/cuda
+
+RUN apt-get update -qq \
+ && apt-get install -y -qq python3 python3-pip git libgl1 libglib2.0-0 curl \
+      ninja-build g++ \
+ && rm -rf /var/lib/apt/lists/* \
+ && nvcc --version \
+ && ln -sf /usr/local/cuda/bin/nvcc /usr/bin/nvcc
+
+RUN python3 -m pip install -q --no-cache-dir "numpy<2" \
+      torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121 \
+ && python3 -m pip install -q --no-cache-dir "numpy<2" \
+      fastapi "uvicorn[standard]" python-multipart opencv-python-headless \
+      "basicsr==1.4.2" "facexlib==0.3.0" "gfpgan==1.3.8" "realesrgan==0.3.0" \
+      "timm==0.9.16" huggingface_hub tqdm \
+      "zeroscratches==1.0.2" \
+ && python3 -c "import numpy, torch; assert numpy.__version__.startswith('1.'); print('TORCH_OK', torch.__version__)" \
+ && python3 -c "from zeroscratches import EraseScratches; print('ZEROSCRATCHES_IMPORT_OK')"
+
+# DDColor: clone only — NEVER pip install (overwrites basicsr with 1.3.4.6).
+# Importing anything under basicsr.archs auto-loads stylegan2_arch → JIT fused_act.
+RUN git clone --depth 1 https://github.com/piddnad/DDColor.git /opt/DDColor \
+ && SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))") \
+ && mkdir -p "$SITE/basicsr/archs" \
+ && cp -a /opt/DDColor/basicsr/archs/ddcolor_arch_utils "$SITE/basicsr/archs/" \
+ && if [ -f /opt/DDColor/basicsr/archs/ddcolor_arch.py ]; then \
+      cp -a /opt/DDColor/basicsr/archs/ddcolor_arch.py "$SITE/basicsr/archs/"; fi \
+ && rm -rf /opt/DDColor/basicsr /opt/DDColor/.git \
+ && python3 -c "from ddcolor import DDColor, ColorizationPipeline, build_ddcolor_model; print('DDCOLOR_IMPORT_OK')" \
+ && python3 -c "from basicsr.archs.rrdbnet_arch import RRDBNet; print('RRDB_OK')" \
+ && test -f "$SITE/basicsr/archs/stylegan2_arch.py" \
+ && echo STYLEGAN_FILE_OK
+
+RUN P=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")/basicsr/archs/stylegan2_arch.py; \
+  if test -f "$P"; then echo STYLEGAN_OK; else \
+  curl -sL -o "$P" https://raw.githubusercontent.com/XPixelGroup/BasicSR/v1.4.2/basicsr/archs/stylegan2_arch.py \
+  && echo STYLEGAN_FALLBACK_OK; fi; test -f "$P"
+
+RUN mkdir -p /opt/restore/weights /opt/restore/hf \
+ && python3 -c \
+ "from torch.hub import download_url_to_file as d; \
+  d('https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth','/opt/restore/weights/GFPGANv1.4.pth'); \
+  d('https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth','/opt/restore/weights/RealESRGAN_x4plus.pth'); \
+  print('WEIGHTS_OK')" \
+ && python3 -c \
+ "from huggingface_hub import snapshot_download; import glob, shutil, os; \
+  d = snapshot_download('piddnad/ddcolor_modelscope'); \
+  pts = glob.glob(d + '/**/*.pt', recursive=True) + glob.glob(d + '/**/*.pth', recursive=True) + glob.glob(d + '/**/*.bin', recursive=True); \
+  assert pts, 'ddcolor weights tidak ketemu: ' + str(os.listdir(d)); \
+  shutil.copy(pts[0], '/opt/restore/weights/ddcolor_modelscope.pt'); \
+  print('DDCOLOR_OK', pts[0])" \
+ && python3 -c \
+ "from huggingface_hub import snapshot_download; \
+  p = snapshot_download('leonelhs/zeroscratches'); \
+  print('ZEROSCRATCHES_WEIGHTS_OK', p)" \
+ && python3 -c \
+ "from facexlib.detection import init_detection_model; \
+  init_detection_model('retinaface_resnet50', half=False, device='cpu'); \
+  print('FACEDET_OK')"
+
+# CodeFormer: clone arch only into site-packages — NEVER run CodeFormer setup.py
+# (vendored basicsr would clobber 1.4.2 + DDColor patches).
+RUN git clone --depth 1 https://github.com/sczhou/CodeFormer.git /opt/CodeFormer \
+ && SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))") \
+ && cp -a /opt/CodeFormer/basicsr/archs/vqgan_arch.py "$SITE/basicsr/archs/" \
+ && cp -a /opt/CodeFormer/basicsr/archs/codeformer_arch.py "$SITE/basicsr/archs/" \
+ && rm -rf /opt/CodeFormer \
+ && python3 -c "from basicsr.utils.registry import ARCH_REGISTRY; import basicsr.archs.vqgan_arch, basicsr.archs.codeformer_arch; \
+  assert ARCH_REGISTRY.get('CodeFormer') is not None; print('CODEFORMER_ARCH_OK')" \
+ && python3 -c \
+ "from torch.hub import download_url_to_file as d; \
+  d('https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth','/opt/restore/weights/codeformer.pth'); \
+  print('CODEFORMER_WEIGHT_OK')" \
+ && python3 -c \
+ "from facexlib.parsing import init_parsing_model; \
+  init_parsing_model(model_name='parsenet', device='cpu'); \
+  print('FACEPARSE_OK')"
+
+RUN nvcc --version \
+ && python3 -c "import shutil; assert shutil.which('nvcc'); print('NVCC_PATH_OK')" \
+ && python3 -c "from basicsr.archs.rrdbnet_arch import RRDBNet; print('RRDB_IMPORT_OK')" \
+ && python3 -c "from ddcolor import DDColor, ColorizationPipeline, build_ddcolor_model; print('DDCOLOR_OK2')" \
+ && python3 -c "from gfpgan import GFPGANer; print('GFPGAN_IMPORT_OK')" \
+ && python3 -c "from zeroscratches import EraseScratches; print('ZS_OK')" \
+ && python3 -c "from basicsr.utils.registry import ARCH_REGISTRY; import basicsr.archs.codeformer_arch; \
+  print('CF_REG', ARCH_REGISTRY.get('CodeFormer')); assert ARCH_REGISTRY.get('CodeFormer')" \
+ && test -f /opt/restore/weights/codeformer.pth && echo CODEFORMER_WEIGHT_OK
+
+COPY server.py /opt/restore/server.py
+WORKDIR /opt/restore
+EXPOSE 8000
+CMD ["python3", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]

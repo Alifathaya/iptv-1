@@ -1,0 +1,43 @@
+# Hybrid FLUX + GFPGAN (satu image, dua venv). Tag :hybrid.
+# Base = image FLUX agen lain (torch 2.5 stack, sudah termasuk model FLUX).
+FROM ghcr.io/alifathaya/fotojelas-gpu:flux1
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+RUN apt-get update -qq \
+ && apt-get install -y -qq python3-venv ninja-build g++ libgl1 libglib2.0-0 curl git \
+ && rm -rf /var/lib/apt/lists/*
+
+# venv GFPGAN (torch 2.1 stack, terpisah dari torch 2.5 FLUX)
+RUN python3 -m venv /opt/venvs/gfpgan \
+ && /opt/venvs/gfpgan/bin/pip install -q --no-cache-dir --upgrade pip \
+ && /opt/venvs/gfpgan/bin/pip install -q --no-cache-dir "numpy<2" \
+      torch==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121 \
+ && /opt/venvs/gfpgan/bin/pip install -q --no-cache-dir "numpy<2" \
+      fastapi "uvicorn[standard]" python-multipart opencv-python-headless \
+      "basicsr==1.4.2" "facexlib==0.3.0" "gfpgan==1.3.8" "realesrgan==0.3.0" \
+      "timm==0.9.16" tqdm \
+ && /opt/venvs/gfpgan/bin/python -c "import numpy, torch; assert numpy.__version__.startswith('1.'); print('GFPGAN_ENV_OK', torch.__version__)"
+
+# weights GFPGAN + deteksi wajah (di venv, CPU cukup untuk warmup)
+ENV MODEL_DIR=/opt/gfpgan/weights
+WORKDIR /opt/gfpgan
+RUN mkdir -p /opt/gfpgan/weights && /opt/venvs/gfpgan/bin/python -c \
+ "import urllib.request, os; \
+  d='/opt/gfpgan/weights'; \
+  urllib.request.urlretrieve('https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth', d+'/GFPGANv1.4.pth'); \
+  urllib.request.urlretrieve('https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth', d+'/RealESRGAN_x4plus.pth'); \
+  print('GFP_WEIGHTS_OK')" \
+ && /opt/venvs/gfpgan/bin/python -c \
+ "from facexlib.detection import init_detection_model; \
+  init_detection_model('retinaface_resnet50', half=False, device='cpu'); \
+  print('FACEDET_OK')"
+
+# file server
+COPY gfpgan_server.py /opt/gfpgan/gfpgan_server.py
+COPY router.py /opt/router/router.py
+COPY start-all.sh /opt/start-all.sh
+RUN chmod +x /opt/start-all.sh
+
+EXPOSE 8000 8001 8002
+WORKDIR /opt/router
+CMD ["/opt/start-all.sh"]

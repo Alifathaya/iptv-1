@@ -1,0 +1,521 @@
+"""AI Worker GPU — stage terpisah dari Backend API (spec 16).
+Endpoint /v1/stage mengeksekusi SATU tahap berat per request sehingga
+backend bisa campur: tahap ringan lokal CPU, tahap berat di sini.
+Jalan di Vast.ai (lihat vast-gpu/Dockerfile); backend di Contabo.
+Tanpa GPU: backend otomatis fallback ke implementasi CPU lokal."""
+import base64
+import logging
+import os
+
+import cv2
+import numpy as np
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("gpuworker")
+
+TOKEN = os.getenv("FJ_TOKEN", "")
+WDIR = os.getenv("MODEL_DIR", "/opt/restore/weights")
+
+app = FastAPI(title="FotoRestore GPU worker")
+
+
+class StageReq(BaseModel):
+    stage: str  # face_restore | upscale | deblur
+    image: str  # dataURL
+    params: dict = {}
+
+
+def _img(data_url: str):
+    b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
+    img = cv2.imdecode(np.frombuffer(base64.b64decode(b64), np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        raise HTTPException(status_code=400, detail="gambar tidak valid")
+    return img
+
+
+def _out(img) -> str:
+    ok, buf = cv2.imencode(".png", img)
+    if not ok:
+        raise HTTPException(status_code=500, detail="encode gagal")
+    return "data:image/png;base64," + base64.b64encode(bytes(buf)).decode()
+
+
+_gfpgan_model = None
+_esrgan_model = None
+_ddcolor_pipe = None
+_codeformer_net = None
+
+
+def _gfpgan():
+    global _gfpgan_model
+    if _gfpgan_model is None:
+        import torch
+        from gfpgan import GFPGANer
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("butuh CUDA")
+        _gfpgan_model = GFPGANer(model_path=os.path.join(WDIR, "GFPGANv1.4.pth"), upscale=1,
+                           arch="clean", channel_multiplier=2, bg_upsampler=None)
+    return _gfpgan_model
+
+
+def _esrgan():
+    global _esrgan_model
+    if _esrgan_model is None:
+        _esrgan_model = _esrgan_model_fn()
+    return _esrgan_model
+
+
+@app.get("/health")
+def health():
+    try:
+        import torch
+
+        cuda = torch.cuda.is_available()
+    except ImportError:
+        cuda = False
+    return {"status": "ok", "cuda": cuda}
+
+
+_full = None
+
+
+def _full_enhancer():
+    global _full
+    if _full is None:
+        import torch
+        from gfpgan import GFPGANer
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("butuh CUDA")
+        bg = _esrgan_model_fn()
+        _full = GFPGANer(
+            model_path=os.path.join(WDIR, "GFPGANv1.4.pth"), upscale=2,
+            arch="clean", channel_multiplier=2, bg_upsampler=bg)
+    return _full
+
+
+
+
+def _codeformer():
+    """Lazy-load CodeFormer net (prefer over GFPGAN for faces)."""
+    global _codeformer_net
+    if _codeformer_net is None:
+        import torch
+        from basicsr.utils.registry import ARCH_REGISTRY
+        import basicsr.archs.vqgan_arch  # noqa: F401 — register VQGAN
+        import basicsr.archs.codeformer_arch  # noqa: F401 — register CodeFormer
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("butuh CUDA")
+        device = torch.device("cuda")
+        net = ARCH_REGISTRY.get("CodeFormer")(
+            dim_embd=512, codebook_size=1024, n_head=8, n_layers=9,
+            connect_list=["32", "64", "128", "256"]).to(device)
+        ckpt_path = os.path.join(WDIR, "codeformer.pth")
+        ckpt = torch.load(ckpt_path, map_location=device)
+        net.load_state_dict(ckpt["params_ema"])
+        net.eval()
+        _codeformer_net = net
+        log.info("CodeFormer ready")
+    return _codeformer_net
+
+
+def _do_codeformer(img, fidelity=0.85, upscale=1, adain=False):
+    """Face restore with CodeFormer. High fidelity (w~0.85) preserves likeness.
+    Default upscale=1 — do NOT bake RealESRGAN into face paste (reduces blown-out /
+    oversharpen). Caller should run _light_upscale afterwards if needed."""
+    import torch
+    from torchvision.transforms.functional import normalize
+    from basicsr.utils import img2tensor, tensor2img
+    from facexlib.utils.face_restoration_helper import FaceRestoreHelper
+
+    device = torch.device("cuda")
+    net = _codeformer()
+    w = float(max(0.0, min(1.0, fidelity)))
+    upscale = int(max(1, min(4, upscale)))
+
+    face_helper = FaceRestoreHelper(
+        upscale, face_size=512, crop_ratio=(1, 1),
+        det_model="retinaface_resnet50", save_ext="png",
+        use_parse=True, device=device)
+    face_helper.read_image(img)
+    nfaces = face_helper.get_face_landmarks_5(
+        only_center_face=False, resize=640, eye_dist_threshold=5)
+    log.info("CodeFormer detect %s faces w=%.2f adain=%s up=%d", nfaces, w, adain, upscale)
+    face_helper.align_warp_face()
+
+    for cropped_face in face_helper.cropped_faces:
+        cropped_face_t = img2tensor(cropped_face / 255.0, bgr2rgb=True, float32=True)
+        normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+        cropped_face_t = cropped_face_t.unsqueeze(0).to(device)
+        try:
+            with torch.no_grad():
+                # adain=False keeps input color/luma better (less invent / less blow-out)
+                output = net(cropped_face_t, w=w, adain=bool(adain))[0]
+                restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
+            del output
+            torch.cuda.empty_cache()
+        except Exception as e:
+            log.warning("CodeFormer face fail: %s", e)
+            restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+        # Soft luminance blend toward original crop to curb highlight invent
+        try:
+            rf = restored_face.astype("uint8")
+            orig = cropped_face
+            if rf.shape[:2] == orig.shape[:2]:
+                y_r = cv2.cvtColor(rf, cv2.COLOR_BGR2YCrCb).astype(np.float32)
+                y_o = cv2.cvtColor(orig, cv2.COLOR_BGR2YCrCb).astype(np.float32)
+                # Keep more original luma as fidelity rises (w=1 → 55% orig luma)
+                keep = 0.15 + 0.40 * w
+                y_r[:, :, 0] = (1.0 - keep) * y_r[:, :, 0] + keep * y_o[:, :, 0]
+                rf = cv2.cvtColor(np.clip(y_r, 0, 255).astype(np.uint8), cv2.COLOR_YCrCb2BGR)
+            restored_face = rf
+        except Exception as e:
+            log.warning("luma blend skip: %s", e)
+            restored_face = restored_face.astype("uint8")
+        face_helper.add_restored_face(np.asarray(restored_face).astype("uint8"))
+
+    bg_img = None
+    # Only upsample bg inside CodeFormer when explicitly requested AND >1.
+    # Prefer external _light_upscale for gentler sharpen.
+    if upscale > 1:
+        try:
+            bg_img, _ = _esrgan().enhance(img, outscale=upscale)
+        except Exception as e:
+            log.warning("RealESRGAN bg fail: %s", e)
+            h, w_ = img.shape[:2]
+            bg_img = cv2.resize(img, (w_ * upscale, h * upscale), interpolation=cv2.INTER_LANCZOS4)
+
+    face_helper.get_inverse_affine(None)
+    if nfaces == 0:
+        return bg_img if bg_img is not None else img
+    out = face_helper.paste_faces_to_input_image(upsample_img=bg_img)
+    return out
+
+
+def _light_sharpen(img, amount=0.35, radius=1.0):
+    """Mild unsharp — amount~0.35 avoids the crunchy oversharpen of prior pipeline."""
+    blur = cv2.GaussianBlur(img, (0, 0), max(0.3, float(radius)))
+    am = float(max(0.0, min(1.5, amount)))
+    return cv2.addWeighted(img, 1.0 + am, blur, -am, 0)
+
+
+def _light_upscale(img, scale=2):
+    """Gentle 2x: Lanczos primary; optional RealESRGAN blended soft to cut crunch."""
+    scale = int(max(1, min(4, scale)))
+    if scale == 1:
+        return _light_sharpen(img, amount=0.3, radius=0.8)
+    h, w = img.shape[:2]
+    lanczos = cv2.resize(img, (w * scale, h * scale), interpolation=cv2.INTER_LANCZOS4)
+    try:
+        esr, _ = _esrgan().enhance(img, outscale=scale)
+        if esr.shape[:2] != lanczos.shape[:2]:
+            esr = cv2.resize(esr, (lanczos.shape[1], lanczos.shape[0]), interpolation=cv2.INTER_AREA)
+        # 45% ESRGAN / 55% Lanczos — retains detail without blown highlights
+        up = cv2.addWeighted(esr, 0.45, lanczos, 0.55, 0)
+    except Exception as e:
+        log.warning("light_upscale ESRGAN skip: %s", e)
+        up = lanczos
+    return _light_sharpen(up, amount=0.30, radius=0.9)
+
+
+def _download(url: str, wdir: str) -> str:
+    import urllib.request
+
+    os.makedirs(wdir, exist_ok=True)
+    dst = os.path.join(wdir, url.rsplit("/", 1)[-1])
+    if not os.path.exists(dst):
+        urllib.request.urlretrieve(url, dst)
+    return dst
+
+def _esrgan_model_fn():
+    import torch
+    from basicsr.archs.rrdbnet_arch import RRDBNet
+    from realesrgan import RealESRGANer
+
+    half = torch.cuda.is_available()
+    if not half:
+        raise RuntimeError("butuh CUDA")
+    from basicsr.utils.download_util import load_file_from_url
+
+    path = os.path.join(WDIR, "RealESRGAN_x4plus.pth")
+    if not os.path.exists(path):
+        path = _download(
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", WDIR)
+    return RealESRGANer(
+        scale=4, model_path=path,
+        model=RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
+                      num_block=23, num_grow_ch=32, scale=4),
+        tile=400, tile_pad=10, pre_pad=0, half=half)
+
+
+class RestoreReq(BaseModel):
+    image: str
+    fidelity: float = 0.85
+    upscale: int = 2
+    repair: bool = True
+    repair_strength: str = "medium"
+
+
+@app.post("/v1/restore")
+def restore(req: RestoreReq, x_api_token: str = Header(default="")):
+    if TOKEN and x_api_token != TOKEN:
+        raise HTTPException(status_code=401, detail="token salah")
+    img = _img(req.image)
+    try:
+        if req.repair:
+            img = _do_repair(img, req.repair_strength)
+        try:
+            # Face-only high-fidelity restore (upscale=1); light upscale AFTER.
+            out = _do_codeformer(img, fidelity=req.fidelity, upscale=1, adain=False)
+        except Exception as e_cf:
+            log.warning("CodeFormer gagal, fallback GFPGAN: %s", e_cf)
+            r = _gfpgan()
+            _, _, out = r.enhance(
+                img, has_aligned=False, only_center_face=False, paste_back=True,
+                weight=max(0.75, min(0.95, req.fidelity)))
+        if int(req.upscale) > 1:
+            out = _light_upscale(out, scale=int(req.upscale))
+        else:
+            out = _light_sharpen(out, amount=0.3, radius=0.8)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("restore gagal")
+        raise HTTPException(status_code=500, detail=f"restore gagal: {e}")
+    return {"image_b64": _out(out)}
+
+
+@app.post("/v1/stage")
+def stage(req: StageReq, x_api_token: str = Header(default="")):
+    if TOKEN and x_api_token != TOKEN:
+        raise HTTPException(status_code=401, detail="token salah")
+    img = _img(req.image)
+    try:
+        if req.stage == "face_restore":
+            fid = float(req.params.get("fidelity", 0.85))
+            faces = req.params.get("faces", [])
+            adain = bool(req.params.get("adain", False))
+            out = _do_faces(img, faces, fid, adain=adain)
+        elif req.stage == "upscale":
+            scale = int(req.params.get("scale", 2))
+            light = bool(req.params.get("light", True))
+            if light:
+                out = _light_upscale(img, scale=scale)
+            else:
+                out, _ = _esrgan().enhance(img, outscale=scale)
+        elif req.stage == "sharpen":
+            out = _light_sharpen(
+                img,
+                amount=float(req.params.get("amount", 0.35)),
+                radius=float(req.params.get("radius", 1.0)))
+        elif req.stage == "deblur":
+            out = _do_deblur(img, req.params.get("strength", "strong"))
+        elif req.stage == "colorize":
+            cs = float(req.params.get("color_strength", 0.5))
+            out = _do_colorize(img, color_strength=cs)
+        elif req.stage == "repair":
+            strength = str(req.params.get("strength", "medium"))
+            out = _do_repair(img, strength)
+        else:
+            raise HTTPException(status_code=400, detail=f"stage {req.stage} tak dikenal")
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("stage %s gagal", req.stage)
+        raise HTTPException(status_code=500, detail=f"{req.stage} gagal: {e}")
+    return {"image_b64": _out(out)}
+
+
+def _do_faces(img, faces, fidelity, adain=False):
+    """Prefer CodeFormer whole-image path (high-fid, no baked upscale)."""
+    if not faces:
+        try:
+            return _do_codeformer(img, fidelity=fidelity, upscale=1, adain=adain)
+        except Exception as e:
+            log.warning("CodeFormer faces fail: %s", e)
+    import cv2 as cv
+
+    try:
+        return _do_codeformer(img, fidelity=fidelity, upscale=1, adain=adain)
+    except Exception as e:
+        log.warning("CodeFormer fail, GFPGAN per-box: %s", e)
+
+    r = _gfpgan()
+    out = img
+    for f in faces:
+        x, y, bw, bh = f["box"]
+        ex, ey = int(bw * 0.25), int(bh * 0.25)
+        x, y = max(0, x - ex), max(0, y - ey)
+        bw, bh = min(img.shape[1] - x, bw + 2 * ex), min(img.shape[0] - y, bh + 2 * ey)
+        crop = out[y:y + bh, x:x + bw].copy()
+        if crop.size == 0:
+            continue
+        if f.get("score", 0) < 0.75:
+            blur = cv.GaussianBlur(crop, (0, 0), 1.0)
+            patch = cv.addWeighted(crop, 1.1, blur, -0.1, 0)
+        else:
+            _, _, patch = r.enhance(crop, has_aligned=False, only_center_face=True,
+                                    paste_back=True, weight=max(0.75, min(0.95, fidelity)))
+        mask = np.full((bh, bw), 255, np.uint8)
+        try:
+            out = cv.seamlessClone(patch, out, mask, (x + bw // 2, y + bh // 2), cv.NORMAL_CLONE)
+        except cv.error:
+            out[y:y + bh, x:x + bw] = patch
+    return out
+
+
+
+_zs_eraser = None
+
+
+def _zeroscratches():
+    """Lazy-load BOPBTL scratch/artifact eraser (zeroscratches)."""
+    global _zs_eraser
+    if _zs_eraser is None:
+        from zeroscratches import EraseScratches
+
+        log.info("loading zeroscratches (BOPBTL scratch) …")
+        _zs_eraser = EraseScratches()
+        log.info("zeroscratches ready")
+    return _zs_eraser
+
+
+def _detect_damage_mask(gray, strength="medium"):
+    """Residual OpenCV mask for leftover white speckles after AI repair."""
+    h, w = gray.shape
+    cfg = {
+        "light":  dict(diff=30, abs_w=245, th=20, bh=24, max_frac=0.06, line=22, mean_v=180),
+        "medium": dict(diff=24, abs_w=228, th=14, bh=18, max_frac=0.14, line=16, mean_v=160),
+        "strong": dict(diff=18, abs_w=210, th=11, bh=15, max_frac=0.20, line=12, mean_v=145),
+    }.get(strength, None) or {
+        "diff": 24, "abs_w": 228, "th": 14, "bh": 18,
+        "max_frac": 0.14, "line": 16, "mean_v": 160,
+    }
+    med = cv2.medianBlur(gray, 5)
+    local = cv2.GaussianBlur(gray, (0, 0), 5)
+    d_m = gray.astype(np.int16) - med.astype(np.int16)
+    d_l = gray.astype(np.int16) - local.astype(np.int16)
+    m = ((d_m > cfg["diff"]) & (gray > 140)).astype(np.uint8) * 255
+    m = cv2.bitwise_or(m, ((d_l > cfg["diff"] + 2) & (gray > 135)).astype(np.uint8) * 255)
+    m = cv2.bitwise_or(m, (gray > cfg["abs_w"]).astype(np.uint8) * 255)
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    th = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, k)
+    _, thb = cv2.threshold(th, cfg["th"], 255, cv2.THRESH_BINARY)
+    m = cv2.bitwise_or(m, thb)
+    k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    bh = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, k2)
+    _, bhb = cv2.threshold(bh, cfg["bh"], 255, cv2.THRESH_BINARY)
+    m = cv2.bitwise_or(m, bhb)
+    for kx, ky in ((17, 1), (1, 17), (11, 3), (3, 11)):
+        kk = cv2.getStructuringElement(cv2.MORPH_RECT, (kx, ky))
+        t2 = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, kk)
+        _, t2b = cv2.threshold(t2, cfg["line"], 255, cv2.THRESH_BINARY)
+        m = cv2.bitwise_or(m, t2b)
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(m, 8)
+    clean = np.zeros_like(m)
+    max_area = int(h * w * cfg["max_frac"])
+    for i in range(1, num):
+        a = stats[i, cv2.CC_STAT_AREA]
+        if a < 2 or a > max_area:
+            continue
+        ys, xs = np.where(labels == i)
+        mean_v = float(gray[ys, xs].mean())
+        bright_frac = float((gray[ys, xs] > 200).mean())
+        mean_d = float(d_m[ys, xs].mean())
+        if a < 120 or mean_v >= cfg["mean_v"] or bright_frac > 0.35 or mean_d > cfg["diff"]:
+            clean[labels == i] = 255
+    return cv2.dilate(clean, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)), 1)
+
+
+def _telea_residual(img, strength="medium"):
+    """Light Telea cleanup for speckles the AI stage may leave."""
+    out = img.copy()
+    rad = {"light": 2, "medium": 3, "strong": 4}.get(strength, 3)
+    g = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
+    mask = _detect_damage_mask(g, strength)
+    if mask.mean() >= 0.15:
+        out = cv2.inpaint(out, mask, rad, cv2.INPAINT_TELEA)
+    g = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
+    med = cv2.medianBlur(g, 5)
+    resid = ((g.astype(np.int16) - med.astype(np.int16) > 28) & (g > 170)).astype(np.uint8) * 255
+    resid = cv2.dilate(resid, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2)), 1)
+    if resid.mean() > 0.15:
+        out = cv2.inpaint(out, resid, 2, cv2.INPAINT_TELEA)
+    return out
+
+
+def _do_repair(img, strength="medium"):
+    """AI scratch/emulsion repair (zeroscratches/BOPBTL) + light Telea residual.
+    Run BEFORE colorize/GFPGAN."""
+    from PIL import Image
+
+    dilate = {"light": 1, "medium": 3, "strong": 5}.get(strength, 3)
+    eraser = _zeroscratches()
+    # Strength tunes mask dilation on the scratch detector output.
+    eraser.options.mask_dilation = dilate
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    pil = Image.fromarray(rgb)
+    restored = eraser.erase(pil)  # HxWx3 RGB uint8
+    if restored is None or getattr(restored, "size", 0) == 0:
+        raise RuntimeError("zeroscratches returned empty")
+    if restored.shape[0] != img.shape[0] or restored.shape[1] != img.shape[1]:
+        restored = cv2.resize(restored, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+    out = cv2.cvtColor(restored, cv2.COLOR_RGB2BGR)
+    out = _telea_residual(out, strength)
+    return cv2.bilateralFilter(out, d=5, sigmaColor=12, sigmaSpace=4)
+
+
+def _do_colorize(img, color_strength=0.5):
+    """DDColor then blend toward grayscale luminance to mute oversat colors.
+    color_strength in [0,1]: 0=grayscale, 1=full DDColor. Default ~0.5 natural/muted."""
+    global _ddcolor_pipe
+    if _ddcolor_pipe is None:
+        import torch
+        from ddcolor import DDColor, ColorizationPipeline, build_ddcolor_model
+
+        dev = "cuda" if torch.cuda.is_available() else "cpu"
+        model = build_ddcolor_model(
+            DDColor, model_path="/opt/restore/weights/ddcolor_modelscope.pt",
+            input_size=512, model_size="large", device=torch.device(dev))
+        _ddcolor_pipe = ColorizationPipeline(model, input_size=512, device=torch.device(dev))
+    colored = _ddcolor_pipe.process(img)
+    w = float(max(0.0, min(1.0, color_strength)))
+    if w >= 0.999:
+        return colored
+    # Preserve DDColor luminance; blend chroma toward gray built from that luma
+    # so we mute saturation without washing structure.
+    y = cv2.cvtColor(colored, cv2.COLOR_BGR2GRAY)
+    gray_rgb = cv2.cvtColor(y, cv2.COLOR_GRAY2BGR).astype(np.float32)
+    c = colored.astype(np.float32)
+    out = (1.0 - w) * gray_rgb + w * c
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def _do_deblur(img, strength):
+    import numpy as _np
+    from numpy.fft import fft2, ifft2
+
+    params = {"light": (5, 1.0, 5), "medium": (9, 2.0, 10), "strong": (15, 3.0, 15)}
+    k, sigma, iters = params.get(strength, params["strong"])
+    ax = _np.arange(k) - k // 2
+    xx, yy = _np.meshgrid(ax, ax)
+    psf = _np.exp(-(xx ** 2 + yy ** 2) / (2 * sigma ** 2))
+    psf /= psf.sum()
+    out_ch = []
+    for c in cv2.split(img):
+        h, w = c.shape
+        H = fft2(psf, s=(h, w))
+        Hc = _np.conj(H)
+        est = c.astype(_np.float64) + 1.0
+        tgt = est.copy()
+        for _ in range(iters):
+            conv = _np.real(ifft2(fft2(est) * H))
+            rel = tgt / _np.maximum(conv, 1e-6)
+            est = _np.clip(est * _np.real(ifft2(fft2(rel) * Hc)), 0, 255)
+        out_ch.append((est - 1.0).clip(0, 255).astype(_np.uint8))
+    return cv2.merge(out_ch)
