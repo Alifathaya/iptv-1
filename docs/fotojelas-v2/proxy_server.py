@@ -378,7 +378,8 @@ def _pick_offers(offers: list, bad_hosts: set) -> list:
         if (o.get("cuda_max_good") or 0) < 12.0:
             continue
         cands.append(o)
-    cands.sort(key=lambda o: o.get("dph_total", 9e9))
+    cands.sort(key=lambda o: (0 if ("3090" in str(o.get("gpu_name", "")) or "4090" in str(o.get("gpu_name", ""))) else 1,
+                               o.get("dph_total", 9e9)))
     return cands[:3]
 
 

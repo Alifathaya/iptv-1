@@ -55,6 +55,19 @@ def health():
     return {"status": "ok", "flux": _ok(8001), "gfpgan": _ok(8002)}
 
 
+@app.get("/v1/logs")
+def logs():
+    out = {}
+    for name, path in (("flux", "/tmp/flux.log"), ("gfpgan", "/tmp/gfpgan.log")):
+        try:
+            with open(path, errors="replace") as f:
+                data = f.read()
+            out[name] = data[-3000:]
+        except OSError as e:
+            out[name] = f"tak ada log: {e}"
+    return out
+
+
 @app.post("/v1/restore")
 def restore(req: Req, x_api_token: str = Header(default="")):
     if TOKEN and x_api_token != TOKEN:

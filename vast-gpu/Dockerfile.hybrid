@@ -32,7 +32,8 @@ RUN mkdir -p /opt/gfpgan/weights && /opt/venvs/gfpgan/bin/python -c \
   init_detection_model('retinaface_resnet50', half=False, device='cpu'); \
   print('FACEDET_OK')"
 
-# file server
+# file server: FLUX (patch NF4-only) timpa bawaan image, router + gfpgan baru
+COPY flux_server.py /opt/restore/server.py
 COPY gfpgan_server.py /opt/gfpgan/gfpgan_server.py
 COPY router.py /opt/router/router.py
 COPY start-all.sh /opt/start-all.sh
