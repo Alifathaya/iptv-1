@@ -242,7 +242,7 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
             if status == "running" and _vast_endpoint(inst):
                 break
             msg = str(inst.get("status_msg") or "")
-            if "failed to start" in msg or "CDI" in msg or "OCI runtime" in msg:
+            if "failed to start" in msg or "CDI" in msg or "OCI runtime" in msg or "failed to create task" in msg or "shim task" in msg:
                 raise RuntimeError(f"host rusak ({msg[:120]}), ganti host")
             if status in ("exited", "unknown", "offline"):
                 raise RuntimeError(f"instance {status}, hubungi admin")
