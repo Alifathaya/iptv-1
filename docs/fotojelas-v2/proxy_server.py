@@ -233,21 +233,21 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
         r = await client.put(f"{VAST_API}/instances/{iid}/", json={"state": "running"}, headers=_vast_headers())
         if not r.json().get("success", True):
             raise RuntimeError(f"start gagal: {r.text[:200]}")
-        # status tidak diketahui (None/api flaky) -> TUNGGU, jangan start/delete
-        t0 = time.time()
-        while time.time() - t0 < 1500:
-            await asyncio.sleep(20)
-            inst = await _vast_instance(client, iid)
-            status = inst.get("actual_status")
-            if status == "running" and _vast_endpoint(inst):
-                break
-            msg = str(inst.get("status_msg") or "")
-            if "failed to start" in msg or "CDI" in msg or "OCI runtime" in msg or "failed to create task" in msg or "shim task" in msg:
-                raise RuntimeError(f"host rusak ({msg[:120]}), ganti host")
-            if status in ("exited", "unknown", "offline"):
-                raise RuntimeError(f"instance {status}, hubungi admin")
-        else:
-            raise RuntimeError("instance tidak running dalam 25 menit")
+    # status tidak diketahui (None/api flaky) -> TUNGGU, jangan start/delete
+    t0 = time.time()
+    while time.time() - t0 < 1500:
+        await asyncio.sleep(20)
+        inst = await _vast_instance(client, iid)
+        status = inst.get("actual_status")
+        if status == "running" and _vast_endpoint(inst):
+            break
+        msg = str(inst.get("status_msg") or "")
+        if "failed to start" in msg or "CDI" in msg or "OCI runtime" in msg or "failed to create task" in msg or "shim task" in msg:
+            raise RuntimeError(f"host rusak ({msg[:120]}), ganti host")
+        if status in ("exited", "unknown", "offline"):
+            raise RuntimeError(f"instance {status}, hubungi admin")
+    else:
+        raise RuntimeError("instance tidak running dalam 25 menit")
     ep = _vast_endpoint(inst)
     if not ep:
         raise RuntimeError("port 8000 instance tidak ketemu")
