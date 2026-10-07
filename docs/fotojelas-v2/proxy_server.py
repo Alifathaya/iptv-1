@@ -239,7 +239,7 @@ async def _vast_ensure_running(client: httpx.AsyncClient) -> dict:
             await asyncio.sleep(20)
             inst = await _vast_instance(client, iid)
             status = inst.get("actual_status")
-            if status == "running":
+            if status == "running" and _vast_endpoint(inst):
                 break
             msg = str(inst.get("status_msg") or "")
             if "failed to start" in msg or "CDI" in msg or "OCI runtime" in msg:
@@ -489,11 +489,28 @@ async def _vast_deploy_job() -> None:
 async def vast_wake():
     if not _vast_key():
         raise HTTPException(status_code=400, detail="API key Vast belum dipasang di VPS.")
+    if DEPLOYING["active"]:
+        return {"status": "deploying"}
     st = _vast_state()
     if st.get("instance_id"):
-        return {"status": "exists", "instance_id": st["instance_id"], "deploy": DEPLOYING["msg"]}
+        asyncio.create_task(_vast_monitor_job(st["instance_id"]))
+        return {"status": "monitoring"}
     asyncio.create_task(_vast_deploy_job())
     return {"status": "deploying"}
+
+
+async def _vast_monitor_job(iid: int) -> None:
+    if DEPLOYING["active"]:
+        return
+    DEPLOYING.update(active=True, msg=f"memantau instance {iid}...")
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            info = await _vast_ensure_running(client)
+        DEPLOYING["msg"] = f"GPU siap di {info['endpoint']}"
+    except Exception as e:
+        DEPLOYING["msg"] = f"pantau gagal: {e}"
+    finally:
+        DEPLOYING["active"] = False
 
 
 @app.get("/api/vast-status")
