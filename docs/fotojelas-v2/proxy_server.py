@@ -20,7 +20,7 @@ VAST_API = "https://console.vast.ai/api/v0"
 VAST_API_V1 = "https://console.vast.ai/api/v1"
 VAST_KEY_FILE = os.path.expanduser("~/.vast-api-key")
 VAST_STATE_FILE = "/opt/fotojelas-proxy/vast.json"
-STOP_AFTER_MIN = 30  # cadangan: stop bila stop-utama gagal (instance RUNNING)
+STOP_AFTER_MIN = 25  # cadangan: stop bila stop-utama gagal (instance RUNNING)
 DESTROY_AFTER_DAYS = 7  # destroy bila tak tersentuh 7 hari -> nol total
 DEPLOYING: dict = {"active": False, "msg": ""}
 
@@ -28,8 +28,9 @@ DEPLOYING: dict = {"active": False, "msg": ""}
 class RestoreReq(BaseModel):
     mode: str = "enhance"  # enhance | colorize | full
     image: str  # dataURL jpeg/png
-    fidelity: float = 0.7
+    fidelity: float = 0.85
     upscale: int = 2
+    color_strength: float = 0.5  # DDColor blend vs gray (0=gray, 1=full)
     model_enhance: str = "fal-ai/codeformer"
     model_colorize: str = "fal-ai/ddcolor"
     extra: dict = {}
@@ -102,7 +103,8 @@ async def restore(req: RestoreReq, x_fal_key: str = Header(default="")):
             if vast:
                 try:
                     b64 = await _vast_stage(client, "colorize", req.image,
-                                            req.fidelity, req.upscale)
+                                            req.fidelity, req.upscale,
+                                            color_strength=req.color_strength)
                     return {"image_b64": b64, "provider": "vast-gpu"}
                 except HTTPException:
                     raise
@@ -117,10 +119,16 @@ async def restore(req: RestoreReq, x_fal_key: str = Header(default="")):
         else:
             if vast:
                 try:
-                    colored = await _vast_stage(client, "colorize", req.image,
-                                                req.fidelity, req.upscale)
+                    repaired = await _vast_stage(client, "repair", req.image,
+                                                 req.fidelity, req.upscale,
+                                                 stop_after=False)
+                    colored = await _vast_stage(client, "colorize", repaired,
+                                                req.fidelity, req.upscale,
+                                                stop_after=False,
+                                                color_strength=req.color_strength)
                     b64 = await _vast_stage(client, "enhance", colored,
-                                            req.fidelity, req.upscale)
+                                            req.fidelity, req.upscale,
+                                            stop_after=True)
                     return {"image_b64": b64, "provider": "vast-gpu"}
                 except HTTPException:
                     raise
@@ -278,21 +286,33 @@ async def _vast_destroy(client: httpx.AsyncClient, iid: int) -> None:
 
 
 async def _vast_stage(client: httpx.AsyncClient, kind: str, image: str,
-                      fidelity: float, upscale: int) -> str:
-    """kind enhance -> GPU /v1/restore ; kind colorize -> GPU /v1/stage."""
+                      fidelity: float, upscale: int, *, stop_after: bool = True,
+                      color_strength: float = 0.5) -> str:
+    """kind: repair|colorize|enhance. enhance -> /v1/restore (repair=False; repair is own stage)."""
     info = await _vast_ensure_running(client)
     try:
         if kind == "enhance":
+            # repair already done upstream in full mode; avoid double-inpaint
             r = await client.post(
                 info["endpoint"] + "/v1/restore",
-                json={"image": image, "fidelity": fidelity, "upscale": upscale},
+                json={"image": image, "fidelity": fidelity, "upscale": upscale,
+                      "repair": False},
+                headers={"X-Api-Token": info["token"]},
+                timeout=600,
+            )
+        elif kind == "repair":
+            r = await client.post(
+                info["endpoint"] + "/v1/stage",
+                json={"stage": "repair", "image": image,
+                      "params": {"strength": "medium"}},
                 headers={"X-Api-Token": info["token"]},
                 timeout=600,
             )
         else:
             r = await client.post(
                 info["endpoint"] + "/v1/stage",
-                json={"stage": "colorize", "image": image, "params": {}},
+                json={"stage": "colorize", "image": image,
+                      "params": {"color_strength": color_strength}},
                 headers={"X-Api-Token": info["token"]},
                 timeout=600,
             )
@@ -308,9 +328,11 @@ async def _vast_stage(client: httpx.AsyncClient, kind: str, image: str,
         _vast_save(st)
     # hasil sudah di tangan -> stop langsung (start lagi ±1 mnt);
     # destroy hanya bila 7 hari tak tersentuh (watchdog)
-    st = _vast_state()
-    if st.get("instance_id"):
-        await _vast_stop(client, st["instance_id"])
+    # full mode calls stage 3x — only stop on last call
+    if stop_after:
+        st = _vast_state()
+        if st.get("instance_id"):
+            await _vast_stop(client, st["instance_id"])
     return b64
 
 
@@ -388,8 +410,8 @@ async def _vast_deploy_job() -> None:
                 DEPLOYING["msg"] = "tidak ada offer GPU yang cocok saat ini"
                 return
             token = secrets.token_hex(16)
-            image = "ghcr.io/alifathaya/fotojelas-gpu:3"
-            body = {"image": image, "disk": 30, "runtype": "args",
+            image = "ghcr.io/alifathaya/fotojelas-gpu:hybrid"
+            body = {"image": image, "disk": 40, "runtype": "args",
                     "env": f"-e FJ_TOKEN={token}"}
             try:
                 with open(os.path.expanduser("~/.github-packages-token")) as f:
