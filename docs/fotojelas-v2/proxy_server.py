@@ -185,8 +185,33 @@ def _vast_state() -> dict:
 
 
 def _vast_save(state: dict) -> None:
+    try:
+        with open(VAST_STATE_FILE) as f:
+            cur = json.load(f)
+    except OSError:
+        cur = {}
+    cur.update(state)
     with open(VAST_STATE_FILE, "w") as f:
-        json.dump(state, f)
+        json.dump(cur, f)
+
+
+def _gpu_token() -> str:
+    """Token GPU stabil (satu file) agar tak hilang saat state berubah."""
+    import secrets
+
+    p = "/opt/fotojelas-proxy/gpu_token"
+    try:
+        with open(p) as f:
+            t = f.read().strip()
+        if t:
+            return t
+    except OSError:
+        pass
+    t = secrets.token_hex(16)
+    with open(p, "w") as f:
+        f.write(t)
+    os.chmod(p, 0o600)
+    return t
 
 
 async def _vast_instance(client: httpx.AsyncClient, iid: int) -> dict:
@@ -290,7 +315,8 @@ async def _vast_destroy(client: httpx.AsyncClient, iid: int) -> None:
     st = _vast_state()
     st.pop("instance_id", None)
     st["last_used"] = 0
-    _vast_save(st)
+    with open(VAST_STATE_FILE, "w") as f:
+        json.dump(st, f)  # tulis langsung (jangan merge) agar id benar hilang
 
 
 async def _vast_stage(client: httpx.AsyncClient, kind: str, image: str,
@@ -418,7 +444,7 @@ async def _vast_deploy_job() -> None:
             if not cands:
                 DEPLOYING["msg"] = "tidak ada offer GPU yang cocok saat ini"
                 return
-            token = secrets.token_hex(16)
+            token = _gpu_token()
             image = "ghcr.io/alifathaya/fotojelas-gpu:hybrid"
             body = {"image": image, "disk": 40, "runtype": "args",
                     "env": f"-e FJ_TOKEN={token}"}
