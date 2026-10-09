@@ -88,26 +88,22 @@
       </div>
 
       <div class="mode-selector cloud-selector">
-        <button type="button" class="mode-btn mode-cloud" data-mode="cloud-4">
-          <span class="mode-icon">☁️</span>
-          <span class="mode-label">GPU 4x</span>
-        </button>
-        <button type="button" class="mode-btn mode-cloud-max" data-mode="cloud-8">
-          <span class="mode-icon">🚀</span>
-          <span class="mode-label">GPU 8x MAX</span>
+        <button type="button" class="mode-btn mode-cloud" data-mode="cloud">
+          <span class="mode-icon">✦</span>
+          <span class="mode-label">GPT Restore</span>
         </button>
       </div>
 
       <div class="cloud-settings glass" id="cloudSettings">
-        <h3 class="cloud-title">☁️ Pengaturan Server GPU</h3>
-        <p class="cloud-hint">Deploy backend GPU Anda, lalu masukkan URL di sini.</p>
+        <h3 class="cloud-title">✦ Pengaturan OpenAI GPT Image</h3>
+        <p class="cloud-hint">Masukkan URL backend Contabo dan kunci akses backend. OpenAI API key disimpan hanya di VPS sebagai OPENAI_API_KEY.</p>
         <div class="cloud-field">
           <label for="cloudApiUrl">URL API</label>
           <input type="url" id="cloudApiUrl" placeholder="https://gpu-server.com:8080" autocomplete="url">
         </div>
         <div class="cloud-field">
-          <label for="cloudApiKey">API Key (opsional)</label>
-          <input type="password" id="cloudApiKey" placeholder="API key jika diaktifkan" autocomplete="off">
+          <label for="cloudApiKey">Kunci akses backend (bukan OpenAI API key)</label>
+          <input type="password" id="cloudApiKey" placeholder="Kunci API_KEY dari konfigurasi VPS" autocomplete="off">
         </div>
         <div class="cloud-actions">
           <button type="button" class="btn btn-secondary btn-sm" id="btnCloudTest">Tes Koneksi</button>
@@ -188,9 +184,8 @@
     </div>
 
     <div class="note glass">
-      <strong>Cloud GPU:</strong> Mode terkuat — Real-ESRGAN di server NVIDIA GPU (4x/8x).
-      Panduan deploy: <code>backend/DEPLOY-GPU.md</code>.
-      Mode lokal: ULTRA 8x tetap tersedia tanpa server.
+      <strong>OpenAI GPT Image:</strong> Restorasi foto melalui OpenAI API dengan kunci rahasia tersimpan di backend Contabo.
+      Mode lokal Cepat, Pro, AI 4x, dan ULTRA 8x tetap tersedia tanpa API.
     </div>
   </div>
 
@@ -208,6 +203,6 @@
     </div>
   </div>
 
-  <script type="module" src="bundle.js"></script>
+  <script type="module" src="main.js"></script>
 </body>
 </html>
