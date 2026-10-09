@@ -50,7 +50,7 @@ const PRESETS = {
   jelas: { mode: 'fast', sharpness: 50, clarity: 30, contrast: 24, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
   portrait: { mode: 'pro', sharpness: 52, clarity: 28, contrast: 16, brightness: 3, denoise: 8, deblur: 45, upscale: 0 },
   detail: { mode: 'pro', sharpness: 62, clarity: 34, contrast: 20, brightness: 3, denoise: 12, deblur: 58, upscale: 0 },
-  cloud: { mode: 'cloud-8', sharpness: 55, clarity: 35, contrast: 25, brightness: 3, denoise: 15, deblur: 50, upscale: 0 },
+  cloud: { mode: 'cloud', sharpness: 55, clarity: 35, contrast: 25, brightness: 3, denoise: 15, deblur: 50, upscale: 0 },
   ultra: { mode: 'ultra', sharpness: 60, clarity: 35, contrast: 25, brightness: 3, denoise: 18, deblur: 50, upscale: 0 },
   extreme: { mode: 'extreme', sharpness: 55, clarity: 35, contrast: 22, brightness: 3, denoise: 18, deblur: 50, upscale: 0 },
   blur: { mode: 'pro', sharpness: 58, clarity: 32, contrast: 22, brightness: 3, denoise: 22, deblur: 55, upscale: 0 },
@@ -166,7 +166,7 @@ function isAiMode(mode = state.mode) {
 }
 
 function isCloudMode(mode = state.mode) {
-  return mode === 'cloud-4' || mode === 'cloud-8';
+  return mode === 'cloud';
 }
 
 function isHeavyMode(mode = state.mode) {
@@ -187,9 +187,7 @@ function setMode(mode) {
   if (mode === 'fast') {
     els.aiBadge.textContent = '🌿 Mode Natural — konvolusi 3×3 latar belakang';
   } else if (isCloudMode(mode)) {
-    els.aiBadge.textContent = mode === 'cloud-8'
-      ? '☁️ Cloud GPU — Real-ESRGAN 8x'
-      : '☁️ Cloud GPU — Real-ESRGAN 4x';
+    els.aiBadge.textContent = '☁️ OpenAI GPT Image — restorasi foto';
   } else if (mode === 'ultra') {
     els.aiBadge.textContent = 'Mode ULTRA — ESRGAN 8x aktif';
   } else if (mode === 'extreme') {
@@ -394,28 +392,20 @@ async function runAiPipeline(sourceData, scale) {
   return await runWorker('process', result, 'post-polish');
 }
 
-async function runCloudPipeline(sourceData, scale) {
+async function runCloudPipeline(sourceData) {
   if (!hasCloudConfigured()) {
     els.cloudSettings.classList.add('visible');
     els.cloudSettings.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    throw new Error('Atur URL server GPU di pengaturan Cloud GPU.');
+    throw new Error('Atur URL backend dan kunci akses server. OPENAI_API_KEY harus disetel di VPS.');
   }
-
-  updateProgress(8, 'Menyiapkan foto untuk GPU…');
+  updateProgress(8, 'Menyiapkan foto untuk OpenAI GPT Image…');
   const canvas = imageDataToCanvas(sourceData);
   const blob = await canvasToBlob(canvas);
-
-  const resultBlob = await enhanceViaCloud(
-    blob,
-    {
-      scale,
-      deblur: state.settings.deblur,
-      sharpness: state.settings.sharpness,
-      contrast: state.settings.contrast,
-    },
-    updateProgress,
-  );
-
+  const resultBlob = await enhanceViaCloud(blob, {
+    deblur: state.settings.deblur,
+    sharpness: state.settings.sharpness,
+    contrast: state.settings.contrast,
+  }, updateProgress);
   return await blobToImageData(resultBlob);
 }
 
@@ -437,10 +427,8 @@ async function processAndRender() {
       result = await runAiPipeline(sourceData, 4);
     } else if (state.mode === 'ultra') {
       result = await runAiPipeline(sourceData, 8);
-    } else if (state.mode === 'cloud-4') {
-      result = await runCloudPipeline(sourceData, 4);
-    } else if (state.mode === 'cloud-8') {
-      result = await runCloudPipeline(sourceData, 8);
+    } else if (state.mode === 'cloud') {
+      result = await runCloudPipeline(sourceData);
     }
 
     state.exportImageData = result;
