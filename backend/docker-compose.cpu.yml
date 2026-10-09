@@ -11,7 +11,7 @@ services:
     environment:
       API_KEY: ${API_KEY:?Set API_KEY in backend/.env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in backend/.env}
-      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1.5}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-2}
       OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-180}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://alifathaya.github.io,capacitor://localhost,https://localhost,http://localhost:8765}
