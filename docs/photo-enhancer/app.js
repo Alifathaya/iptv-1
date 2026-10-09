@@ -401,10 +401,13 @@ async function runCloudPipeline(sourceData) {
   updateProgress(8, 'Menyiapkan foto untuk AI…');
   const canvas = imageDataToCanvas(sourceData);
   const blob = await canvasToBlob(canvas);
+  const colorize = document.getElementById('colorizeCheck')?.checked ?? false;
+  const prompt = document.getElementById('promptText')?.value ?? '';
   const resultBlob = await enhanceViaCloud(blob, {
     deblur: state.settings.deblur,
     sharpness: state.settings.sharpness,
     contrast: state.settings.contrast,
+    colorize, prompt,
   }, updateProgress);
   return await blobToImageData(resultBlob);
 }

@@ -65,6 +65,8 @@ async def enhance_image(
     deblur: Annotated[int, Form()] = 50,
     sharpness: Annotated[int, Form()] = 60,
     contrast: Annotated[int, Form()] = 25,
+    colorize: Annotated[bool, Form()] = False,
+    prompt: Annotated[str, Form()] = "",
 ) -> Response:
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="OpenAI API key is not configured on the backend")
@@ -80,7 +82,9 @@ async def enhance_image(
         if not 0 <= value <= 100:
             raise HTTPException(status_code=400, detail=f"{name} must be between 0 and 100")
 
-    prompt = (
+    prompt = prompt.strip()[:2000]
+    if not prompt:
+        prompt = (
         "Restore the supplied photograph, do not create a different image. "
         "Improve visible sharpness, reduce blur and noise, recover natural texture, and balance contrast "
         "while keeping the result photorealistic. Preserve the original person's identity, facial geometry, "
@@ -90,6 +94,9 @@ async def enhance_image(
         "Return one restored image. "
         f"Restoration controls (0-100): deblur={deblur}, sharpness={sharpness}, contrast={contrast}."
     )
+    if colorize:
+        prompt += (" If the input is black-and-white, colorize it with natural, realistic colors: "
+                   "muted archival skin tones, natural hair and clothing colors. Not oversaturated.")
     try:
         async with AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS, max_retries=1) as client:
             result = await client.images.edit(

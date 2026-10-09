@@ -36,6 +36,8 @@ export async function enhanceViaCloud(blob, options, onProgress) {
   form.append('deblur', String(options.deblur ?? 50));
   form.append('sharpness', String(options.sharpness ?? 60));
   form.append('contrast', String(options.contrast ?? 25));
+  form.append('colorize', String(options.colorize ?? false));
+  form.append('prompt', String(options.prompt ?? ''));
   onProgress?.(15, 'Mengirim foto ke backend…');
   const res = await fetch(`${base}/v1/enhance`, { method: 'POST', headers: headers(), body: form });
   if (!res.ok) {
