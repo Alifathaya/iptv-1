@@ -206,6 +206,14 @@
     </div>
   </div>
 
-  <script type="module" src="main.js"></script>
+  <script>
+window.addEventListener('DOMContentLoaded', function () {
+  var z = document.getElementById('uploadZone');
+  var f = document.getElementById('fileInput');
+  if (!z || !f) return;
+  z.addEventListener('click', function () { f.click(); });
+});
+</script>
+<script type="module" src="main.js"></script>
 </body>
 </html>
