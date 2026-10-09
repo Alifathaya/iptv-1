@@ -51,6 +51,17 @@ export async function saveAndShareImage(dataUrl) {
   return uri;
 }
 
+export async function pickNativePhoto() {
+  const { Camera } = await import('@capacitor/camera');
+  const res = await Camera.pickImages({ limit: 1, quality: 90 });
+  const photo = res.photos && res.photos[0];
+  if (!photo) throw new Error('batal');
+  const url = photo.webPath || photo.path;
+  const r = await fetch(url);
+  const blob = await r.blob();
+  return new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' });
+}
+
 export async function saveToDocuments(dataUrl) {
   const { Filesystem, Directory } = await plugins();
   const base64 = dataUrl.split(',')[1];

@@ -599,8 +599,30 @@ function initCompareSlider() {
   document.addEventListener('touchend', end);
 }
 
+async function pickViaNative() {
+  const { pickNativePhoto, isNativeApp: isNat } = await import('./native.js');
+  if (!isNat()) return false;
+  try {
+    const file = await pickNativePhoto();
+    await handleFile(file);
+  } catch (e) {
+    if (String(e && e.message) !== 'batal') throw e;
+  }
+  return true;
+}
+
 function initUpload() {
-  els.uploadZone.addEventListener('click', () => els.fileInput.click());
+  els.uploadZone.addEventListener('click', async () => {
+    try {
+      const { isNativeApp } = await import('./native.js');
+      if (isNativeApp()) {
+        if (await pickViaNative()) return;
+      }
+    } catch (e) {
+      window.__toast && window.__toast('Galeri native gagal: ' + e.message);
+    }
+    els.fileInput.click();
+  });
   els.fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) handleFile(file);
