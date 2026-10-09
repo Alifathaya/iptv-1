@@ -1,61 +1,60 @@
-"""Foto Jelas Pro — GPU backend API."""
-
+"""Foto Jelas Pro — secure OpenAI GPT Image restoration proxy."""
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
-from typing import Annotated, Literal
+from typing import Annotated
 
-import cv2
-import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from openai import APIError, AsyncOpenAI, AuthenticationError, PermissionDeniedError, RateLimitError
 
-from .config import ALLOWED_ORIGINS, API_KEY, MAX_PIXELS, MAX_UPLOAD_BYTES
-from .enhancer import enhancer
+from .config import ALLOWED_ORIGINS, API_KEY, MAX_UPLOAD_BYTES, OPENAI_API_KEY, OPENAI_IMAGE_MODEL, OPENAI_TIMEOUT_SECONDS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Foto Jelas Pro GPU API",
-    description="Real-ESRGAN super-resolution backend for extreme photo enhancement",
-    version="1.0.0",
+    title="Foto Jelas Pro — OpenAI API",
+    description="Photo restoration proxy using the OpenAI GPT Image API",
+    version="2.0.0",
 )
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 
-def verify_api_key(
-    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
-) -> None:
-    if API_KEY and x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+def verify_api_key(x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None) -> None:
+    # Fail closed: do not expose a paid OpenAI-backed endpoint without app auth.
+    if not API_KEY:
+        raise HTTPException(status_code=503, detail="Backend access key is not configured")
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing backend access key")
 
 
 @app.get("/health")
 def health() -> dict:
-    gpu = enhancer.gpu_info()
     return {
         "status": "ok",
-        "service": "foto-jelas-gpu",
-        "gpu": gpu,
+        "service": "foto-jelas-openai",
+        "model": OPENAI_IMAGE_MODEL,
+        "openai_configured": bool(OPENAI_API_KEY),
     }
 
 
 @app.get("/v1/info")
 def info(_: None = Depends(verify_api_key)) -> dict:
     return {
-        "models": ["RealESRGAN_x4plus", "RealESRGAN_x2plus"],
-        "scales": [4, 8],
-        "max_pixels": MAX_PIXELS,
+        "provider": "OpenAI",
+        "model": OPENAI_IMAGE_MODEL,
         "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
+        "operation": "image restoration/edit",
     }
 
 
@@ -63,60 +62,63 @@ def info(_: None = Depends(verify_api_key)) -> dict:
 async def enhance_image(
     _: Annotated[None, Depends(verify_api_key)],
     image: UploadFile = File(...),
-    scale: Annotated[int, Form()] = 4,
-    deblur: Annotated[int, Form()] = 80,
+    deblur: Annotated[int, Form()] = 50,
     sharpness: Annotated[int, Form()] = 60,
     contrast: Annotated[int, Form()] = 25,
 ) -> Response:
-    if scale not in (4, 8):
-        raise HTTPException(status_code=400, detail="scale must be 4 or 8")
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="OpenAI API key is not configured on the backend")
+    if image.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Use a PNG, JPEG, or WebP image")
 
-    contents = await image.read()
+    contents = await image.read(MAX_UPLOAD_BYTES + 1)
+    if not contents:
+        raise HTTPException(status_code=400, detail="Image file is empty")
     if len(contents) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Image too large")
+        raise HTTPException(status_code=413, detail="Image exceeds the upload limit")
+    for name, value in (("deblur", deblur), ("sharpness", sharpness), ("contrast", contrast)):
+        if not 0 <= value <= 100:
+            raise HTTPException(status_code=400, detail=f"{name} must be between 0 and 100")
 
-    nparr = np.frombuffer(contents, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise HTTPException(status_code=400, detail="Could not decode image")
-
-    h, w = img.shape[:2]
-    if h * w > MAX_PIXELS:
-        ratio = (MAX_PIXELS / (h * w)) ** 0.5
-        new_w = max(1, int(w * ratio))
-        new_h = max(1, int(h * ratio))
-        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        logger.info("Downscaled input %dx%d -> %dx%d", w, h, new_w, new_h)
-
-    logger.info(
-        "Enhance request: %dx%d scale=%d deblur=%d",
-        img.shape[1], img.shape[0], scale, deblur,
+    prompt = (
+        "Restore the supplied photograph, do not create a different image. "
+        "Improve visible sharpness, reduce blur and noise, recover natural texture, and balance contrast "
+        "while keeping the result photorealistic. Preserve the original person's identity, facial geometry, "
+        "age, expression, skin tone, hair, clothing, pose, composition, background, objects, and any text. "
+        "Do not beautify, stylize, change identity, add or remove objects, or invent details not supported "
+        "by the source. When details are irrecoverable, keep them natural rather than hallucinating features. "
+        "Return one restored image. "
+        f"Restoration controls (0-100): deblur={deblur}, sharpness={sharpness}, contrast={contrast}."
     )
-
     try:
-        result = enhancer.enhance(
-            img,
-            scale=scale,
-            deblur_strength=deblur,
-            sharpness=sharpness,
-            contrast=contrast,
-        )
-    except Exception as exc:
-        logger.exception("Enhancement failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        async with AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS, max_retries=1) as client:
+            result = await client.images.edit(
+                model=OPENAI_IMAGE_MODEL,
+                image=(image.filename or "photo.png", contents, image.content_type),
+                prompt=prompt,
+                input_fidelity="high",
+                quality="high",
+                size="auto",
+                output_format="png",
+            )
+    except RateLimitError as exc:
+        logger.warning("OpenAI rate limit reached")
+        raise HTTPException(status_code=429, detail="OpenAI API rate limit or quota reached") from exc
+    except (AuthenticationError, PermissionDeniedError) as exc:
+        logger.error("OpenAI authentication or model permission error")
+        raise HTTPException(status_code=502, detail="OpenAI rejected the backend API key or model access; check backend configuration") from exc
+    except APIError as exc:
+        logger.exception("OpenAI image edit request failed")
+        raise HTTPException(status_code=502, detail="OpenAI image restoration failed") from exc
 
-    ok, png = cv2.imencode(".png", result)
-    if not ok:
-        raise HTTPException(status_code=500, detail="Failed to encode result")
-
-    return Response(
-        content=png.tobytes(),
-        media_type="image/png",
-        headers={
-            "X-Output-Width": str(result.shape[1]),
-            "X-Output-Height": str(result.shape[0]),
-        },
-    )
+    if not result.data or not result.data[0].b64_json:
+        raise HTTPException(status_code=502, detail="OpenAI returned no image data")
+    try:
+        png_bytes = base64.b64decode(result.data[0].b64_json, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        logger.exception("OpenAI returned invalid base64 image data")
+        raise HTTPException(status_code=502, detail="Invalid image data returned by OpenAI") from exc
+    return Response(content=png_bytes, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @app.exception_handler(Exception)
