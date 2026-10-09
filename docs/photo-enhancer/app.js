@@ -650,7 +650,7 @@ function initControls() {
   if (els.btnCloudSave) {
     els.btnCloudSave.addEventListener('click', () => {
       setCloudSettings(els.cloudApiUrl.value.trim(), els.cloudApiKey.value.trim());
-      alert('Pengaturan Cloud GPU disimpan.');
+      alert('Pengaturan backend OpenAI disimpan.');
     });
   }
 
