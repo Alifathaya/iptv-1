@@ -775,7 +775,7 @@ export function initApp() {
   initUpload();
   initControls();
   initCompareSlider();
-  setMode('fast');
+  applyPreset('cloud');
   updateSliderUI();
 
   if (isNativeApp()) {
