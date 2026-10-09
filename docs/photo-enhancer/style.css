@@ -371,7 +371,7 @@ body {
 }
 
 .cloud-selector {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   margin-bottom: 0.75rem;
 }
 
@@ -724,3 +724,47 @@ input[type='range']::-moz-range-thumb {
     min-width: 100%;
   }
 }
+
+/* === RAPIH v2: anti-kepencet saat scroll, tombol selalu terlihat === */
+button, .mode-btn, .preset-btn, .btn {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 48px;
+}
+.mode-selector { gap: 0.65rem; }
+.presets { gap: 0.6rem; }
+.cloud-settings .cloud-check {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin: 0.9rem 0 0.4rem; font-weight: 600; min-height: 48px;
+}
+.cloud-settings .cloud-check input { width: 22px; height: 22px; }
+.cloud-settings .cloud-label { display: block; margin: 0.6rem 0 0.35rem; font-weight: 600; }
+.cloud-settings #promptText {
+  width: 100%; box-sizing: border-box;
+  background: rgba(255,255,255,0.05); color: var(--text);
+  border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+  padding: 0.7rem; font-family: var(--font); font-size: 0.85rem;
+}
+.cloud-actions { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.9rem; }
+.cloud-actions .btn { width: 100%; flex: none; }
+@media (max-width: 480px) {
+  .mode-selector { grid-template-columns: repeat(2, 1fr); }
+}
+
+details.adv { margin-bottom: 0.9rem; }
+details.adv > summary {
+  list-style: none; cursor: pointer;
+  padding: 0.8rem 1rem; min-height: 48px;
+  display: flex; align-items: center;
+  border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.04); color: var(--text-muted);
+  font-weight: 700; font-size: 0.85rem;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+details.adv > summary::-webkit-details-marker { display: none; }
+details.adv > summary::before { content: '▶'; margin-right: 0.6rem; font-size: 0.7rem; }
+details.adv[open] > summary::before { content: '▼'; }
+details.adv > div { margin-top: 0.6rem; }
+details.adv .controls { margin-bottom: 0; }

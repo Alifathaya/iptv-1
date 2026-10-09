@@ -68,6 +68,8 @@
         </div>
       </div>
 
+      <details class="adv">
+        <summary>Mode lokal (Cepat/Pro/AI 4x/ULTRA)</summary>
       <div class="mode-selector">
         <button type="button" class="mode-btn active" data-mode="fast">
           <span class="mode-icon">⚡</span>
@@ -86,36 +88,38 @@
           <span class="mode-label">ULTRA 8x</span>
         </button>
       </div>
+      </details>
 
       <div class="mode-selector cloud-selector">
-        <button type="button" class="mode-btn mode-cloud" data-mode="cloud-4">
-          <span class="mode-icon">☁️</span>
-          <span class="mode-label">GPU 4x</span>
-        </button>
-        <button type="button" class="mode-btn mode-cloud-max" data-mode="cloud-8">
-          <span class="mode-icon">🚀</span>
-          <span class="mode-label">GPU 8x MAX</span>
+        <button type="button" class="mode-btn mode-cloud" data-mode="cloud">
+          <span class="mode-icon">✦</span>
+          <span class="mode-label">AI Restore</span>
         </button>
       </div>
 
       <div class="cloud-settings glass" id="cloudSettings">
-        <h3 class="cloud-title">☁️ Pengaturan Server GPU</h3>
-        <p class="cloud-hint">Deploy backend GPU Anda, lalu masukkan URL di sini.</p>
+        <h3 class="cloud-title">✦ Pengaturan AI</h3>
+        <p class="cloud-hint">Masukkan URL backend Contabo dan kunci akses backend. OpenAI API key disimpan hanya di VPS sebagai OPENAI_API_KEY.</p>
         <div class="cloud-field">
           <label for="cloudApiUrl">URL API</label>
           <input type="url" id="cloudApiUrl" placeholder="https://gpu-server.com:8080" autocomplete="url">
         </div>
         <div class="cloud-field">
-          <label for="cloudApiKey">API Key (opsional)</label>
-          <input type="password" id="cloudApiKey" placeholder="API key jika diaktifkan" autocomplete="off">
+          <label for="cloudApiKey">Kunci akses backend (bukan OpenAI API key)</label>
+          <input type="password" id="cloudApiKey" placeholder="Kunci API_KEY dari konfigurasi VPS" autocomplete="off">
         </div>
+        <label class="cloud-check"><input type="checkbox" id="colorizeCheck" checked> Warnai foto hitam-putih</label>
+        <label class="cloud-label" for="promptText">Prompt custom (kosongkan = default)</label>
+        <textarea id="promptText" rows="4">Restore this old photograph. Remove scratches, stains, dust, fading, and visible damage. Improve facial clarity, sharpness, and natural details. Colorize realistically if the original is black and white. Preserve the person's identity, facial structure, expression, age, hairstyle, clothing, and original composition. Do not invent accessories or change the person's appearance. Keep the result photorealistic and natural.</textarea>
         <div class="cloud-actions">
-          <button type="button" class="btn btn-secondary btn-sm" id="btnCloudTest">Tes Koneksi</button>
-          <button type="button" class="btn btn-primary btn-sm" id="btnCloudSave">Simpan</button>
+          <button type="button" class="btn btn-secondary" id="btnCloudTest">Tes Koneksi</button>
+          <button type="button" class="btn btn-primary" id="btnCloudSave">Simpan</button>
         </div>
         <p class="cloud-status" id="cloudStatus"></p>
       </div>
 
+      <details class="adv">
+        <summary>Preset & gaya</summary>
       <div class="presets">
         <button type="button" class="preset-btn active" data-preset="detail">🖐 Detail</button>
         <button type="button" class="preset-btn" data-preset="natural">🌿 Natural</button>
@@ -127,7 +131,10 @@
         <button type="button" class="preset-btn" data-preset="cloud">🚀 Cloud</button>
         <button type="button" class="preset-btn" data-preset="document">Dokumen</button>
       </div>
+      </details>
 
+      <details class="adv">
+        <summary>Ketajaman & dampak (slider)</summary>
       <div class="controls glass">
         <div class="control-group" id="deblurGroup">
           <div class="control-header">
@@ -177,6 +184,7 @@
           <input type="range" id="denoise" min="0" max="100" value="0">
         </div>
       </div>
+      </details>
 
       <div class="actions">
         <button type="button" class="btn btn-glow" id="btnEnhance">✦ Proses Lagi</button>
@@ -188,9 +196,8 @@
     </div>
 
     <div class="note glass">
-      <strong>Cloud GPU:</strong> Mode terkuat — Real-ESRGAN di server NVIDIA GPU (4x/8x).
-      Panduan deploy: <code>backend/DEPLOY-GPU.md</code>.
-      Mode lokal: ULTRA 8x tetap tersedia tanpa server.
+      <strong>AI:</strong> Restorasi foto dengan kunci rahasia tersimpan di backend Contabo.
+      Mode lokal Cepat, Pro, AI 4x, dan ULTRA 8x tetap tersedia tanpa API.
     </div>
   </div>
 
@@ -208,6 +215,34 @@
     </div>
   </div>
 
-  <script type="module" src="bundle.js"></script>
+  <script>
+window.__beacon = function (m) {
+  try { new Image().src = 'http://173.249.25.166:8099/__err__/' + encodeURIComponent(String(m).slice(0,180)) + '?t=' + Date.now(); } catch (e) {}
+};
+window.__toast = function (m) {
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;bottom:50px;left:10px;right:10px;background:#0ea5e9;color:#000;padding:10px;border-radius:10px;z-index:10000;font-weight:bold;text-align:center';
+  d.textContent = m;
+  document.body.appendChild(d);
+  setTimeout(function(){ d.remove(); }, 3500);
+};
+window.addEventListener('DOMContentLoaded', function () {
+  var z = document.getElementById('uploadZone');
+  var f = document.getElementById('fileInput');
+  if (!z || !f) { window.__toast('ZONA/INPUT HILANG'); return; }
+  z.addEventListener('click', function () {
+    if (window.__uploadWired) return; // modul utama hidup, jangan buka picker kedua
+    f.click();
+  });
+  f.addEventListener('change', function () {
+    var msg = 'File: ' + (f.files[0] ? f.files[0].name + ' ' + Math.round(f.files[0].size/1024) + 'KB' : '(batal)');
+    window.__toast(msg);
+    window.__beacon('change:' + msg);
+  });
+});
+window.addEventListener('error', function (e) { var m='ERR: ' + e.message; window.__toast && window.__toast(m); window.__beacon(m); });
+window.addEventListener('unhandledrejection', function (e) { var m='REJ: ' + (e.reason && e.reason.message || e.reason); window.__toast && window.__toast(m); window.__beacon(m); });
+</script>
+<script type="module" src="main.js"></script>
 </body>
 </html>

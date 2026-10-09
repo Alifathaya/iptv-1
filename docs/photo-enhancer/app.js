@@ -50,7 +50,7 @@ const PRESETS = {
   jelas: { mode: 'fast', sharpness: 50, clarity: 30, contrast: 24, brightness: 0, denoise: 0, deblur: 0, upscale: 0 },
   portrait: { mode: 'pro', sharpness: 52, clarity: 28, contrast: 16, brightness: 3, denoise: 8, deblur: 45, upscale: 0 },
   detail: { mode: 'pro', sharpness: 62, clarity: 34, contrast: 20, brightness: 3, denoise: 12, deblur: 58, upscale: 0 },
-  cloud: { mode: 'cloud-8', sharpness: 55, clarity: 35, contrast: 25, brightness: 3, denoise: 15, deblur: 50, upscale: 0 },
+  cloud: { mode: 'cloud', sharpness: 55, clarity: 35, contrast: 25, brightness: 3, denoise: 15, deblur: 50, upscale: 0 },
   ultra: { mode: 'ultra', sharpness: 60, clarity: 35, contrast: 25, brightness: 3, denoise: 18, deblur: 50, upscale: 0 },
   extreme: { mode: 'extreme', sharpness: 55, clarity: 35, contrast: 22, brightness: 3, denoise: 18, deblur: 50, upscale: 0 },
   blur: { mode: 'pro', sharpness: 58, clarity: 32, contrast: 22, brightness: 3, denoise: 22, deblur: 55, upscale: 0 },
@@ -166,7 +166,7 @@ function isAiMode(mode = state.mode) {
 }
 
 function isCloudMode(mode = state.mode) {
-  return mode === 'cloud-4' || mode === 'cloud-8';
+  return mode === 'cloud';
 }
 
 function isHeavyMode(mode = state.mode) {
@@ -187,9 +187,7 @@ function setMode(mode) {
   if (mode === 'fast') {
     els.aiBadge.textContent = '🌿 Mode Natural — konvolusi 3×3 latar belakang';
   } else if (isCloudMode(mode)) {
-    els.aiBadge.textContent = mode === 'cloud-8'
-      ? '☁️ Cloud GPU — Real-ESRGAN 8x'
-      : '☁️ Cloud GPU — Real-ESRGAN 4x';
+    els.aiBadge.textContent = '☁️ AI — restorasi foto';
   } else if (mode === 'ultra') {
     els.aiBadge.textContent = 'Mode ULTRA — ESRGAN 8x aktif';
   } else if (mode === 'extreme') {
@@ -394,28 +392,23 @@ async function runAiPipeline(sourceData, scale) {
   return await runWorker('process', result, 'post-polish');
 }
 
-async function runCloudPipeline(sourceData, scale) {
+async function runCloudPipeline(sourceData) {
   if (!hasCloudConfigured()) {
     els.cloudSettings.classList.add('visible');
     els.cloudSettings.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    throw new Error('Atur URL server GPU di pengaturan Cloud GPU.');
+    throw new Error('Atur URL backend dan kunci akses server. Kunci AI harus disetel di VPS.');
   }
-
-  updateProgress(8, 'Menyiapkan foto untuk GPU…');
+  updateProgress(8, 'Menyiapkan foto untuk AI…');
   const canvas = imageDataToCanvas(sourceData);
   const blob = await canvasToBlob(canvas);
-
-  const resultBlob = await enhanceViaCloud(
-    blob,
-    {
-      scale,
-      deblur: state.settings.deblur,
-      sharpness: state.settings.sharpness,
-      contrast: state.settings.contrast,
-    },
-    updateProgress,
-  );
-
+  const colorize = document.getElementById('colorizeCheck')?.checked ?? false;
+  const prompt = document.getElementById('promptText')?.value ?? '';
+  const resultBlob = await enhanceViaCloud(blob, {
+    deblur: state.settings.deblur,
+    sharpness: state.settings.sharpness,
+    contrast: state.settings.contrast,
+    colorize, prompt,
+  }, updateProgress);
   return await blobToImageData(resultBlob);
 }
 
@@ -437,10 +430,8 @@ async function processAndRender() {
       result = await runAiPipeline(sourceData, 4);
     } else if (state.mode === 'ultra') {
       result = await runAiPipeline(sourceData, 8);
-    } else if (state.mode === 'cloud-4') {
-      result = await runCloudPipeline(sourceData, 4);
-    } else if (state.mode === 'cloud-8') {
-      result = await runCloudPipeline(sourceData, 8);
+    } else if (state.mode === 'cloud') {
+      result = await runCloudPipeline(sourceData);
     }
 
     state.exportImageData = result;
@@ -474,7 +465,9 @@ async function handleFile(file) {
   updateProgress(0, 'Membuka foto…');
 
   try {
+    window.__toast && window.__toast('Langkah 1: baca file...'); window.__beacon && window.__beacon('L1');
     const img = await loadImageFromFile(file);
+    window.__toast && window.__toast('Langkah 2: gambar ' + img.naturalWidth + 'x' + img.naturalHeight); window.__beacon && window.__beacon('L2 ' + img.naturalWidth + 'x' + img.naturalHeight);
     const dims = scaleDimensions(img.naturalWidth, img.naturalHeight);
 
     state.originalImage = img;
@@ -485,11 +478,20 @@ async function handleFile(file) {
 
     els.uploadZone.classList.add('hidden');
     els.workspace.classList.add('active');
+    try {
+      els.workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) {}
+    if (els.btnEnhance) {
+      els.btnEnhance.classList.add('btn-glow');
+      setTimeout(() => els.btnEnhance && els.btnEnhance.classList.remove('btn-glow'), 4000);
+    }
     els.compareContainer.style.aspectRatio = `${dims.width} / ${dims.height}`;
 
+    window.__toast && window.__toast('Langkah 3: proses...');
     applyPreset('detail');
     updateComparePosition(50);
     await processAndRender();
+    window.__toast && window.__toast('Selesai'); window.__beacon && window.__beacon('DONE');
   } catch {
     alert('Gagal membuka gambar. Coba file lain.');
   } finally {
@@ -604,8 +606,31 @@ function initCompareSlider() {
   document.addEventListener('touchend', end);
 }
 
+async function pickViaNative() {
+  const { pickNativePhoto, isNativeApp: isNat } = await import('./native.js');
+  if (!isNat()) return false;
+  try {
+    const file = await pickNativePhoto();
+    await handleFile(file);
+  } catch (e) {
+    if (String(e && e.message) !== 'batal') throw e;
+  }
+  return true;
+}
+
 function initUpload() {
-  els.uploadZone.addEventListener('click', () => els.fileInput.click());
+  window.__uploadWired = true;
+  els.uploadZone.addEventListener('click', async () => {
+    try {
+      const { isNativeApp } = await import('./native.js');
+      if (isNativeApp()) {
+        if (await pickViaNative()) return;
+      }
+    } catch (e) {
+      window.__toast && window.__toast('Galeri native gagal: ' + e.message);
+    }
+    els.fileInput.click();
+  });
   els.fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) handleFile(file);
@@ -662,7 +687,7 @@ function initControls() {
   if (els.btnCloudSave) {
     els.btnCloudSave.addEventListener('click', () => {
       setCloudSettings(els.cloudApiUrl.value.trim(), els.cloudApiKey.value.trim());
-      alert('Pengaturan Cloud GPU disimpan.');
+      alert('Pengaturan backend AI disimpan.');
     });
   }
 
@@ -673,10 +698,13 @@ function initControls() {
       els.cloudStatus.textContent = 'Menghubungkan…';
       try {
         const health = await checkCloudHealth();
-        const gpu = health.gpu?.available
-          ? `GPU: ${health.gpu.name}`
-          : 'CPU mode (tanpa GPU)';
-        els.cloudStatus.textContent = `✓ Terhubung — ${gpu}`;
+        const provider = health.service === 'foto-jelas-openai'
+          ? 'AI siap'
+          : 'Backend merespons';
+        const configured = health.openai_configured === false
+          ? ' — kunci AI belum disetel di VPS'
+          : '';
+        els.cloudStatus.textContent = `✓ Terhubung — ${provider}${configured}`;
         els.cloudStatus.classList.add('ok');
       } catch (err) {
         els.cloudStatus.textContent = `✗ ${err.message}`;
@@ -747,7 +775,7 @@ export function initApp() {
   initUpload();
   initControls();
   initCompareSlider();
-  setMode('fast');
+  applyPreset('cloud');
   updateSliderUI();
 
   if (isNativeApp()) {

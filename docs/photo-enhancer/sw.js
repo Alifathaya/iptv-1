@@ -1,9 +1,12 @@
-const CACHE = 'foto-jelas-pro-v5';
+const CACHE = 'foto-jelas-pro-v6';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
-  './bundle.js',
+  './main.js',
+  './app.js',
+  './cloud-api.js',
+  './native.js',
   './filters.js',
   './processor.worker.js',
   './manifest.webmanifest',
