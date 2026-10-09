@@ -187,7 +187,7 @@ function setMode(mode) {
   if (mode === 'fast') {
     els.aiBadge.textContent = '🌿 Mode Natural — konvolusi 3×3 latar belakang';
   } else if (isCloudMode(mode)) {
-    els.aiBadge.textContent = '☁️ OpenAI GPT Image — restorasi foto';
+    els.aiBadge.textContent = '☁️ AI — restorasi foto';
   } else if (mode === 'ultra') {
     els.aiBadge.textContent = 'Mode ULTRA — ESRGAN 8x aktif';
   } else if (mode === 'extreme') {
@@ -396,9 +396,9 @@ async function runCloudPipeline(sourceData) {
   if (!hasCloudConfigured()) {
     els.cloudSettings.classList.add('visible');
     els.cloudSettings.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    throw new Error('Atur URL backend dan kunci akses server. OPENAI_API_KEY harus disetel di VPS.');
+    throw new Error('Atur URL backend dan kunci akses server. Kunci AI harus disetel di VPS.');
   }
-  updateProgress(8, 'Menyiapkan foto untuk OpenAI GPT Image…');
+  updateProgress(8, 'Menyiapkan foto untuk AI…');
   const canvas = imageDataToCanvas(sourceData);
   const blob = await canvasToBlob(canvas);
   const resultBlob = await enhanceViaCloud(blob, {
@@ -650,7 +650,7 @@ function initControls() {
   if (els.btnCloudSave) {
     els.btnCloudSave.addEventListener('click', () => {
       setCloudSettings(els.cloudApiUrl.value.trim(), els.cloudApiKey.value.trim());
-      alert('Pengaturan backend OpenAI disimpan.');
+      alert('Pengaturan backend AI disimpan.');
     });
   }
 
@@ -662,10 +662,10 @@ function initControls() {
       try {
         const health = await checkCloudHealth();
         const provider = health.service === 'foto-jelas-openai'
-          ? `OpenAI GPT Image (${health.model || 'model belum diketahui'})`
+          ? 'AI siap'
           : 'Backend merespons';
         const configured = health.openai_configured === false
-          ? ' — OPENAI_API_KEY belum disetel di VPS'
+          ? ' — kunci AI belum disetel di VPS'
           : '';
         els.cloudStatus.textContent = `✓ Terhubung — ${provider}${configured}`;
         els.cloudStatus.classList.add('ok');
