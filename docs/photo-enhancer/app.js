@@ -661,10 +661,13 @@ function initControls() {
       els.cloudStatus.textContent = 'Menghubungkan…';
       try {
         const health = await checkCloudHealth();
-        const gpu = health.gpu?.available
-          ? `GPU: ${health.gpu.name}`
-          : 'CPU mode (tanpa GPU)';
-        els.cloudStatus.textContent = `✓ Terhubung — ${gpu}`;
+        const provider = health.service === 'foto-jelas-openai'
+          ? `OpenAI GPT Image (${health.model || 'model belum diketahui'})`
+          : 'Backend merespons';
+        const configured = health.openai_configured === false
+          ? ' — OPENAI_API_KEY belum disetel di VPS'
+          : '';
+        els.cloudStatus.textContent = `✓ Terhubung — ${provider}${configured}`;
         els.cloudStatus.classList.add('ok');
       } catch (err) {
         els.cloudStatus.textContent = `✗ ${err.message}`;
