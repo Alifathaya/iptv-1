@@ -96,7 +96,6 @@ async def enhance_image(
                 model=OPENAI_IMAGE_MODEL,
                 image=(image.filename or "photo.png", contents, image.content_type),
                 prompt=prompt,
-                input_fidelity="high",
                 quality="high",
                 size="auto",
                 output_format="png",
