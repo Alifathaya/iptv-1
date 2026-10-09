@@ -465,7 +465,9 @@ async function handleFile(file) {
   updateProgress(0, 'Membuka foto…');
 
   try {
+    window.__toast && window.__toast('Langkah 1: baca file...');
     const img = await loadImageFromFile(file);
+    window.__toast && window.__toast('Langkah 2: gambar ' + img.naturalWidth + 'x' + img.naturalHeight);
     const dims = scaleDimensions(img.naturalWidth, img.naturalHeight);
 
     state.originalImage = img;
@@ -478,9 +480,11 @@ async function handleFile(file) {
     els.workspace.classList.add('active');
     els.compareContainer.style.aspectRatio = `${dims.width} / ${dims.height}`;
 
+    window.__toast && window.__toast('Langkah 3: proses...');
     applyPreset('detail');
     updateComparePosition(50);
     await processAndRender();
+    window.__toast && window.__toast('Selesai');
   } catch {
     alert('Gagal membuka gambar. Coba file lain.');
   } finally {
