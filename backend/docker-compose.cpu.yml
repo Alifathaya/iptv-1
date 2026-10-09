@@ -1,18 +1,18 @@
 services:
-  foto-jelas-cpu:
+  foto-jelas-openai:
     build:
       context: .
       dockerfile: Dockerfile.cpu
-    image: foto-jelas-cpu:latest
-    container_name: foto-jelas-cpu
+    image: foto-jelas-openai:latest
+    container_name: foto-jelas-openai
+    # Bind to localhost and publish via an HTTPS reverse proxy.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
-      API_KEY: ${API_KEY:-}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
-    volumes:
-      - model-weights:/app/weights
+      API_KEY: ${API_KEY:?Set API_KEY in backend/.env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in backend/.env}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-1.5}
+      OPENAI_TIMEOUT_SECONDS: ${OPENAI_TIMEOUT_SECONDS:-180}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://alifathaya.github.io,capacitor://localhost,https://localhost,http://localhost:8765}
     restart: unless-stopped
-
-volumes:
-  model-weights:
