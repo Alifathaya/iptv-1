@@ -465,9 +465,9 @@ async function handleFile(file) {
   updateProgress(0, 'Membuka foto…');
 
   try {
-    window.__toast && window.__toast('Langkah 1: baca file...');
+    window.__toast && window.__toast('Langkah 1: baca file...'); window.__beacon && window.__beacon('L1');
     const img = await loadImageFromFile(file);
-    window.__toast && window.__toast('Langkah 2: gambar ' + img.naturalWidth + 'x' + img.naturalHeight);
+    window.__toast && window.__toast('Langkah 2: gambar ' + img.naturalWidth + 'x' + img.naturalHeight); window.__beacon && window.__beacon('L2 ' + img.naturalWidth + 'x' + img.naturalHeight);
     const dims = scaleDimensions(img.naturalWidth, img.naturalHeight);
 
     state.originalImage = img;
@@ -484,7 +484,7 @@ async function handleFile(file) {
     applyPreset('detail');
     updateComparePosition(50);
     await processAndRender();
-    window.__toast && window.__toast('Selesai');
+    window.__toast && window.__toast('Selesai'); window.__beacon && window.__beacon('DONE');
   } catch {
     alert('Gagal membuka gambar. Coba file lain.');
   } finally {
