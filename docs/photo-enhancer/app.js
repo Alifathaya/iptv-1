@@ -619,6 +619,7 @@ async function pickViaNative() {
 }
 
 function initUpload() {
+  window.__uploadWired = true;
   els.uploadZone.addEventListener('click', async () => {
     try {
       const { isNativeApp } = await import('./native.js');

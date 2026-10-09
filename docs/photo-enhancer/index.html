@@ -221,7 +221,10 @@ window.addEventListener('DOMContentLoaded', function () {
   var z = document.getElementById('uploadZone');
   var f = document.getElementById('fileInput');
   if (!z || !f) { window.__toast('ZONA/INPUT HILANG'); return; }
-  z.addEventListener('click', function () { f.click(); });
+  z.addEventListener('click', function () {
+    if (window.__uploadWired) return; // modul utama hidup, jangan buka picker kedua
+    f.click();
+  });
   f.addEventListener('change', function () {
     var msg = 'File: ' + (f.files[0] ? f.files[0].name + ' ' + Math.round(f.files[0].size/1024) + 'KB' : '(batal)');
     window.__toast(msg);
