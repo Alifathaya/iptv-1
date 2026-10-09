@@ -105,12 +105,12 @@
           <label for="cloudApiKey">Kunci akses backend (bukan OpenAI API key)</label>
           <input type="password" id="cloudApiKey" placeholder="Kunci API_KEY dari konfigurasi VPS" autocomplete="off">
         </div>
+        <label class="cloud-check"><input type="checkbox" id="colorizeCheck" checked> Warnai foto hitam-putih</label>
+        <label class="cloud-label" for="promptText">Prompt custom (kosongkan = default)</label>
+        <textarea id="promptText" rows="4">Restore this old photograph. Remove scratches, stains, dust, fading, and visible damage. Improve facial clarity, sharpness, and natural details. Colorize realistically if the original is black and white. Preserve the person's identity, facial structure, expression, age, hairstyle, clothing, and original composition. Do not invent accessories or change the person's appearance. Keep the result photorealistic and natural.</textarea>
         <div class="cloud-actions">
-          <label style="display:block;margin:8px 0"><input type="checkbox" id="colorizeCheck" checked> Warnai foto hitam-putih</label>
-        <label style="display:block;margin:4px 0">Prompt custom (kosongkan = default)</label>
-        <textarea id="promptText" rows="5" style="width:100%">Restore this old photograph. Remove scratches, stains, dust, fading, and visible damage. Improve facial clarity, sharpness, and natural details. Colorize realistically if the original is black and white. Preserve the person's identity, facial structure, expression, age, hairstyle, clothing, and original composition. Do not invent accessories or change the person's appearance. Keep the result photorealistic and natural.</textarea>
-        <button type="button" class="btn btn-secondary btn-sm" id="btnCloudTest">Tes Koneksi</button>
-          <button type="button" class="btn btn-primary btn-sm" id="btnCloudSave">Simpan</button>
+          <button type="button" class="btn btn-secondary" id="btnCloudTest">Tes Koneksi</button>
+          <button type="button" class="btn btn-primary" id="btnCloudSave">Simpan</button>
         </div>
         <p class="cloud-status" id="cloudStatus"></p>
       </div>

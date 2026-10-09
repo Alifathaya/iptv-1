@@ -724,3 +724,31 @@ input[type='range']::-moz-range-thumb {
     min-width: 100%;
   }
 }
+
+/* === RAPIH v2: anti-kepencet saat scroll, tombol selalu terlihat === */
+button, .mode-btn, .preset-btn, .btn {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 48px;
+}
+.mode-selector { gap: 0.65rem; }
+.presets { gap: 0.6rem; }
+.cloud-settings .cloud-check {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin: 0.9rem 0 0.4rem; font-weight: 600; min-height: 48px;
+}
+.cloud-settings .cloud-check input { width: 22px; height: 22px; }
+.cloud-settings .cloud-label { display: block; margin: 0.6rem 0 0.35rem; font-weight: 600; }
+.cloud-settings #promptText {
+  width: 100%; box-sizing: border-box;
+  background: rgba(255,255,255,0.05); color: var(--text);
+  border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+  padding: 0.7rem; font-family: var(--font); font-size: 0.85rem;
+}
+.cloud-actions { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.9rem; }
+.cloud-actions .btn { width: 100%; flex: none; }
+@media (max-width: 480px) {
+  .mode-selector { grid-template-columns: repeat(2, 1fr); }
+}
