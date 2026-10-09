@@ -478,6 +478,13 @@ async function handleFile(file) {
 
     els.uploadZone.classList.add('hidden');
     els.workspace.classList.add('active');
+    try {
+      els.workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) {}
+    if (els.btnEnhance) {
+      els.btnEnhance.classList.add('btn-glow');
+      setTimeout(() => els.btnEnhance && els.btnEnhance.classList.remove('btn-glow'), 4000);
+    }
     els.compareContainer.style.aspectRatio = `${dims.width} / ${dims.height}`;
 
     window.__toast && window.__toast('Langkah 3: proses...');
