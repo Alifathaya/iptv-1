@@ -1,5 +1,5 @@
 /**
- * OpenAI GPT Image API client for Foto Jelas Pro.
+ * AI API client for Foto Jelas Pro.
  * The OpenAI API key stays on the backend; this client sends only the image
  * and a separate backend access key.
  */
@@ -45,7 +45,7 @@ export async function enhanceViaCloud(blob, options, onProgress) {
     try { const err = await res.json(); if (err.detail) detail = err.detail; } catch { /* ignore */ }
     throw new Error(detail);
   }
-  onProgress?.(70, 'OpenAI GPT Image sedang memulihkan foto…');
+  onProgress?.(70, 'AI sedang memulihkan foto…');
   const resultBlob = await res.blob();
   if (!resultBlob.type.startsWith('image/')) throw new Error('Backend tidak mengembalikan file gambar yang valid.');
   onProgress?.(95, 'Menerima hasil restorasi…');
